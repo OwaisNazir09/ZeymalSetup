@@ -10,18 +10,21 @@ echo ============================================================
 echo   Zeymal Environment Setup
 echo ============================================================
 echo   This script will:
-echo     * Create the "postgres" Windows user
+echo     * Create the "postgres" (SQL admin) and "RT" (IIS/FTP) users
 echo     * Prepare application and download folders
-echo     * Install SQL Server (Express) matching your OS
+echo     * Install SQL Server Express (2022 on Win10/11, 2014 on Win7/8)
 echo     * Install Java Runtime Environment 8u271
-echo     * Download the Zeymal application files
+echo     * Download and deploy the Zeymal application files
+echo     * Configure SQL Server (TCP/IP, port 1433)
+echo     * Install IIS + FTP and configure the RT site
+echo     * Restore the Ashley database
 echo ============================================================
 echo.
 
 :: ------------------------------------------------------------
-:: [1/8] Check administrator privileges
+:: [1/14] Check administrator privileges
 :: ------------------------------------------------------------
-echo [1/8] Checking administrator privileges...
+echo [1/14] Checking administrator privileges...
 net session >nul 2>&1
 if errorlevel 1 (
     echo   [ERROR] This script requires administrator privileges.
@@ -34,9 +37,9 @@ echo   [ OK  ] Running with administrator privileges.
 echo.
 
 :: ------------------------------------------------------------
-:: [2/8] Detect and validate Windows version
+:: [2/14] Detect and validate Windows version
 :: ------------------------------------------------------------
-echo [2/8] Detecting Windows version...
+echo [2/14] Detecting Windows version...
 for /f "delims=" %%A in ('powershell -NoProfile -Command "(Get-CimInstance Win32_OperatingSystem).Caption"') do set "windowsName=%%A"
 echo   Detected OS: %windowsName%
 
@@ -52,31 +55,29 @@ echo   [ OK  ] Supported Windows version detected.
 echo.
 
 :: ------------------------------------------------------------
-:: [3/8] Create the "postgres" user account
+:: [3/14] Create the "postgres" user (used as SQL SA password holder)
 :: ------------------------------------------------------------
-echo [3/8] Configuring "postgres" user account...
+echo [3/14] Configuring "postgres" user account...
 set "newUser=postgres"
 set "newPassword=362611"
-
-net user "%newUser%" >nul 2>&1
-if errorlevel 1 (
-    echo   User "%newUser%" not found. Creating...
-    net user "%newUser%" "%newPassword%" /add
-    if !errorlevel! neq 0 (
-        echo   [ERROR] Failed to create user "%newUser%".
-        pause
-        exit /b 1
-    )
-    echo   [ OK  ] User "%newUser%" created successfully.
-) else (
-    echo   [ OK  ] User "%newUser%" already exists. Skipping.
-)
+call :EnsureUser "%newUser%" "%newPassword%" "0"
+if !errorlevel! neq 0 ( pause & exit /b 1 )
 echo.
 
 :: ------------------------------------------------------------
-:: [4/8] Create the application folder
+:: [4/14] Create the "RT" user (used by IIS + FTP)
 :: ------------------------------------------------------------
-echo [4/8] Preparing application folder...
+echo [4/14] Configuring "RT" user account for IIS/FTP...
+set "rtUser=RT"
+set "rtPassword=master"
+call :EnsureUser "%rtUser%" "%rtPassword%" "1"
+if !errorlevel! neq 0 ( pause & exit /b 1 )
+echo.
+
+:: ------------------------------------------------------------
+:: [5/14] Create the application folder
+:: ------------------------------------------------------------
+echo [5/14] Preparing application folder...
 set "appFolder=C:\Users\%newUser%\zeymal"
 if not exist "%appFolder%" (
     mkdir "%appFolder%"
@@ -90,12 +91,13 @@ if not exist "%appFolder%" (
 ) else (
     echo   [ OK  ] Already exists: %appFolder%
 )
+echo   [NOTE ] The manual suggests using a non-C drive if available.
 echo.
 
 :: ------------------------------------------------------------
-:: [5/8] Create the Downloads folder
+:: [6/14] Create the Downloads folder
 :: ------------------------------------------------------------
-echo [5/8] Preparing Downloads folder...
+echo [6/14] Preparing Downloads folder...
 set "DownloadPath=C:\Users\%newUser%\Downloads"
 if not exist "%DownloadPath%" (
     mkdir "%DownloadPath%"
@@ -112,25 +114,35 @@ if not exist "%DownloadPath%" (
 echo.
 
 :: ------------------------------------------------------------
-:: [6/8] Install SQL Server (edition depends on Windows version)
+:: [7/14] Install SQL Server (edition depends on Windows version)
 :: ------------------------------------------------------------
-echo [6/8] Installing SQL Server...
-echo   [SKIP ] SQL Server install routines are disabled in this script.
-echo           Re-enable :InstallSqlModern / :InstallSqlLegacy to install.
+echo [7/14] Installing SQL Server...
+echo %windowsName% | findstr /I /C:"Windows 11" /C:"Windows 10" >nul
+if not errorlevel 1 (
+    call :InstallSqlModern
+) else (
+    echo %windowsName% | findstr /I /C:"Windows 7" /C:"Windows 8" >nul
+    if not errorlevel 1 (
+        call :InstallSqlLegacy
+    ) else (
+        echo   [ERROR] Unsupported Windows version for SQL Server install.
+        pause
+        exit /b 1
+    )
+)
 echo.
 
 :: ------------------------------------------------------------
-:: [7/8] Install Java Runtime Environment
+:: [8/14] Install Java Runtime Environment
 :: ------------------------------------------------------------
-echo [7/8] Installing Java Runtime Environment...
-echo   [SKIP ] Java install routine is disabled in this script.
-echo           Re-enable :InstallJava to install.
+echo [8/14] Installing Java Runtime Environment...
+call :InstallJava
 echo.
 
 :: ------------------------------------------------------------
-:: [8/8] Download Zeymal application files
+:: [9/14] Download Zeymal application files
 :: ------------------------------------------------------------
-echo [8/8] Downloading Zeymal application files...
+echo [9/14] Downloading Zeymal application files...
 call :DownloadZeymalFiles
 if !errorlevel! neq 0 (
     echo   [ERROR] One or more Zeymal files failed to download.
@@ -139,16 +151,100 @@ if !errorlevel! neq 0 (
 )
 echo.
 
+:: ------------------------------------------------------------
+:: [10/14] Deploy files into the Zeymal folder
+:: ------------------------------------------------------------
+echo [10/14] Deploying files into %appFolder%...
+call :DeployZeymalFiles
+if !errorlevel! neq 0 (
+    echo   [WARN ] Deployment finished with warnings.
+)
+echo.
+
+:: ------------------------------------------------------------
+:: [11/14] Configure SQL Server (TCP/IP, port 1433, service LogOn)
+:: ------------------------------------------------------------
+echo [11/14] Configuring SQL Server networking and service...
+call :ConfigureSqlServer
+echo.
+
+:: ------------------------------------------------------------
+:: [12/14] Enable IIS + FTP Windows features
+:: ------------------------------------------------------------
+echo [12/14] Enabling IIS + FTP features...
+call :EnableIisFeatures
+echo.
+
+:: ------------------------------------------------------------
+:: [13/14] Configure IIS virtual directory and FTP site
+:: ------------------------------------------------------------
+echo [13/14] Configuring IIS "RT" virtual directory and FTP site...
+call :ConfigureIisSites
+echo.
+
+:: ------------------------------------------------------------
+:: [14/14] Restore Ashley database
+:: ------------------------------------------------------------
+echo [14/14] Restoring Ashley database...
+call :RestoreAshleyDb
+echo.
+
 echo ============================================================
 echo   Setup complete
 echo ============================================================
-echo   User account  : %newUser%
-echo   App folder    : %appFolder%
-echo   Files folder  : C:\Users\%newUser%\zeymal\files
-echo   Downloads     : %DownloadPath%
+echo   SQL admin user   : %newUser%   (SA password: %newPassword%)
+echo   IIS/FTP user     : %rtUser%    (password:   %rtPassword%)
+echo   App folder       : %appFolder%
+echo   Files folder     : %appFolder%\files
+echo   Downloads        : %DownloadPath%
+echo   SQL instance     : .\SQLEXPRESS  (TCP 1433)
+echo   IIS Virtual Dir  : http://localhost/RT
+echo   FTP site         : ftp://localhost/  (site name: RT)
+echo ============================================================
+echo   Next manual steps (per install guide):
+echo     * Start Zeymal, copy File > Zeymal Signature, share for license
+echo     * Load the license via File > Zeymal Configuration > Load Config
+echo     * Restart Zeymal and login with admin/admin
 echo ============================================================
 echo.
 pause
+exit /b 0
+
+
+:: ============================================================
+:: :EnsureUser <username> <password> <admin? 0/1>
+:: Creates the user if missing, sets password-never-expires,
+:: and optionally adds to the Administrators group.
+:: ============================================================
+:EnsureUser
+set "eu_user=%~1"
+set "eu_pass=%~2"
+set "eu_admin=%~3"
+
+net user "%eu_user%" >nul 2>&1
+if errorlevel 1 (
+    echo   User "%eu_user%" not found. Creating...
+    net user "%eu_user%" "%eu_pass%" /add
+    if !errorlevel! neq 0 (
+        echo   [ERROR] Failed to create user "%eu_user%".
+        exit /b 1
+    )
+    echo   [ OK  ] User "%eu_user%" created.
+) else (
+    echo   [ OK  ] User "%eu_user%" already exists.
+)
+
+if "%eu_admin%"=="1" (
+    net localgroup "Administrators" "%eu_user%" /add >nul 2>&1
+    echo   [ OK  ] "%eu_user%" ensured in Administrators group.
+)
+
+powershell -NoProfile -Command "try { Set-LocalUser -Name '%eu_user%' -PasswordNeverExpires $true -ErrorAction Stop } catch { exit 1 }"
+if !errorlevel! neq 0 (
+    echo   [WARN ] Could not set PasswordNeverExpires on "%eu_user%".
+) else (
+    echo   [ OK  ] PasswordNeverExpires set on "%eu_user%".
+)
 exit /b 0
 
 
@@ -177,7 +273,6 @@ exit /b %rc%
 :InstallSqlModern
 echo   --- SQL Server 2022 Express ---
 
-:: Skip if the SQLEXPRESS instance is already present
 sc query "MSSQL$SQLEXPRESS" >nul 2>&1
 if !errorlevel! equ 0 (
     echo   [ OK  ] SQLEXPRESS instance already installed. Skipping engine install.
@@ -352,10 +447,10 @@ exit /b 0
 
 
 :: ============================================================
-:: Download the Zeymal application files
+:: Download the Zeymal application files (with real filenames)
 :: ============================================================
 :DownloadZeymalFiles
-set "ZeymalFiles=C:\Users\%newUser%\zeymal\files"
+set "ZeymalFiles=%appFolder%\files"
 
 if not exist "%ZeymalFiles%" (
     mkdir "%ZeymalFiles%"
@@ -379,30 +474,27 @@ set "Zeymaljar=https://my.microsoftpersonalcontent.com/personal/1d15c3c5a76b8f6e
 
 set "ZeymalResetxip=https://my.microsoftpersonalcontent.com/personal/1d15c3c5a76b8f6e/_layouts/15/download.aspx?UniqueId=087a7d24-c60b-4420-b48f-74477eb77454&Translate=false&tempauth=v1e.eyJzaXRlaWQiOiJhNzRiMGExYi03ODhmLTRlNTktYTI0OC0xYTZkZTBkYTBkZWQiLCJhdWQiOiIwMDAwMDAwMy0wMDAwLTBmZjEtY2UwMC0wMDAwMDAwMDAwMDAvbXkubWljcm9zb2Z0cGVyc29uYWxjb250ZW50LmNvbUA5MTg4MDQwZC02YzY3LTRjNWItYjExMi0zNmEzMDRiNjZkYWQiLCJleHAiOiIxNzgzOTIwMTY5In0.fHpi_7-QgzhUS8ZdNevoaKNCAU9daLH5d6L1ljyQrBG8IxXULP4r_NunbJYVQiccDGyJdNABmFplyb9qxkylntgn8YBDbBBowlUR5NXIctBcDmjthCmnSRTCXDsLIsVMWSm1nEh8Aj2_Dwl8G7T_quIQ_MjO9nscq_l-_fw633x5Ig1j07xe-OJlbSEtUBmP_oM8Te1HdXhFDujnrUM-kld1drTPO_QVqT1p3FO2fexZYW7PPmqTLSpyyXtaXiSN-7078AaZLGcpC_QW210rdwWHbpMuHFk_Kby0youDAvDYtX9oZW9iPeoa-BHEZs4OxVJ28Y7z2lxAM7cLeefHyiPRNpJtkpsgzyrW457VFOtg8WQWJwjMWHjFaLohkUgzETcQDt6yIqzqzFgsrIXVFLx5csjiK7wVAqVO5hIsWLdu_r-OdATZwMaSDKc5h7BdxhH7ai8ZUwcUBr-KenyeVpUpNQMzU_h8TutNHMYHI6mLWdp1nQPzc4cLrhgDwYQu6MiJx5mfEElKxMCD_wkB3WpL6rxVesY751nbnlpZl49dOypNu0GAvMq2xJJ25MZWzz0PyKPtsczj_R95OL5xTWUbU_bDKldH5BsdS94OE1o.GT2ruZ2FXmsuvc0ojYOKs43aYC-KvoYcSVo90P-DnNk&ApiVersion=2.0"
 
-set "fileList=ZeymalRplaceXip ZeymalIftwInstaller Zeymalexe Zeymaljar ZeymalResetxip"
-
-set /a totalFiles=0
-for %%V in (%fileList%) do set /a totalFiles+=1
-set /a fileIdx=0
-
-for %%V in (%fileList%) do (
-    set /a fileIdx+=1
-    call :DownloadZeymalItem %%V !fileIdx! !totalFiles!
-    if !errorlevel! neq 0 (
-        echo   [ERROR] Failed to download %%V.
-        exit /b 1
-    )
-)
+call :DownloadZeymalItem "ZeymalRplaceXip"     "Z Replace Base.zip"              1 5
+if !errorlevel! neq 0 exit /b 1
+call :DownloadZeymalItem "ZeymalIftwInstaller" "jre-8u271-windows-i586-iftw.exe" 2 5
+if !errorlevel! neq 0 exit /b 1
+call :DownloadZeymalItem "Zeymalexe"           "Zeymal.exe"                      3 5
+if !errorlevel! neq 0 exit /b 1
+call :DownloadZeymalItem "Zeymaljar"           "Zeymal.jar"                      4 5
+if !errorlevel! neq 0 exit /b 1
+call :DownloadZeymalItem "ZeymalResetxip"      "Z_Reset.zip"                     5 5
+if !errorlevel! neq 0 exit /b 1
 
 echo   [ OK  ] All Zeymal files downloaded successfully.
 exit /b 0
 
+
 :DownloadZeymalItem
 set "varName=%~1"
-set "idx=%~2"
-set "total=%~3"
+set "fileName=%~2"
+set "idx=%~3"
+set "total=%~4"
 set "fileUrl=!%varName%!"
-set "fileName=%varName%.exe"
 set "fileDest=%ZeymalFiles%\%fileName%"
 
 echo.
@@ -415,17 +507,203 @@ if exist "!fileDest!" (
 )
 
 echo     Downloading...
-
 curl.exe -L --fail --show-error --output "!fileDest!" "!fileUrl!"
-
 if !errorlevel! neq 0 (
     echo     [ERROR] Download failed.
     echo            URL: !fileUrl!
-
     if exist "!fileDest!" del /q "!fileDest!" >nul 2>&1
+    exit /b 1
+)
+echo     [ OK  ] Saved to: !fileDest!
+exit /b 0
 
+
+:: ============================================================
+:: Deploy Zeymal files: extract Z Replace Base.zip into the app
+:: folder and copy Zeymal.jar / .exe / jre alongside.
+:: ============================================================
+:DeployZeymalFiles
+set "ZeymalFiles=%appFolder%\files"
+
+set "zRepZip=%ZeymalFiles%\Z Replace Base.zip"
+if exist "%zRepZip%" (
+    echo   Extracting "Z Replace Base.zip" into %appFolder% ...
+    powershell -NoProfile -Command "try { Expand-Archive -Path '%zRepZip%' -DestinationPath '%appFolder%' -Force } catch { exit 1 }"
+    if !errorlevel! neq 0 (
+        echo   [WARN ] Failed to extract "Z Replace Base.zip".
+    ) else (
+        echo   [ OK  ] Extracted.
+    )
+) else (
+    echo   [WARN ] "Z Replace Base.zip" not found in %ZeymalFiles%.
+)
+
+call :CopyIfPresent "%ZeymalFiles%\Zeymal.jar"                      "%appFolder%\Zeymal.jar"
+call :CopyIfPresent "%ZeymalFiles%\Zeymal.exe"                      "%appFolder%\Zeymal.exe"
+call :CopyIfPresent "%ZeymalFiles%\jre-8u271-windows-i586-iftw.exe" "%appFolder%\jre-8u271-windows-i586-iftw.exe"
+exit /b 0
+
+
+:CopyIfPresent
+if exist "%~1" (
+    copy /Y "%~1" "%~2" >nul
+    if !errorlevel! equ 0 (
+        echo   [ OK  ] Copied: %~nx1
+    ) else (
+        echo   [WARN ] Failed to copy: %~nx1
+    )
+) else (
+    echo   [WARN ] Missing (skip copy): %~1
+)
+exit /b 0
+
+
+:: ============================================================
+:: Configure SQL Server: enable TCP/IP on port 1433 and set the
+:: service to Local System account, then restart.
+:: ============================================================
+:ConfigureSqlServer
+sc query "MSSQL$SQLEXPRESS" >nul 2>&1
+if !errorlevel! neq 0 (
+    echo   [SKIP ] MSSQL$SQLEXPRESS service not found. Skipping SQL config.
+    exit /b 0
+)
+
+echo   Enabling TCP/IP and setting port 1433 via registry...
+powershell -NoProfile -Command "$root='HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server'; $inst = Get-ItemProperty -Path (Join-Path $root 'Instance Names\SQL') | Select-Object -ExpandProperty SQLEXPRESS -ErrorAction SilentlyContinue; if (-not $inst) { Write-Host '  [WARN ] Could not find SQLEXPRESS instance registry key.'; exit 0 }; $tcp = \"$root\$inst\MSSQLServer\SuperSocketNetLib\Tcp\"; Set-ItemProperty -Path $tcp -Name Enabled -Value 1 -ErrorAction SilentlyContinue; Set-ItemProperty -Path (Join-Path $tcp 'IPAll') -Name TcpPort -Value '1433' -ErrorAction SilentlyContinue; Set-ItemProperty -Path (Join-Path $tcp 'IPAll') -Name TcpDynamicPorts -Value '' -ErrorAction SilentlyContinue; Write-Host '  [ OK  ] Registry updated.'"
+
+echo   Setting SQL Server service to Local System account (with desktop interaction)...
+sc config "MSSQL$SQLEXPRESS" obj= "LocalSystem" type= own type= interact >nul 2>&1
+if !errorlevel! neq 0 (
+    echo   [WARN ] sc config for MSSQL$SQLEXPRESS failed. Check permissions.
+) else (
+    echo   [ OK  ] Service configured for Local System.
+)
+
+echo   Restarting SQL Server service...
+net stop "MSSQL$SQLEXPRESS" >nul 2>&1
+net start "MSSQL$SQLEXPRESS" >nul 2>&1
+if !errorlevel! neq 0 (
+    echo   [WARN ] Failed to restart MSSQL$SQLEXPRESS. Restart manually.
+) else (
+    echo   [ OK  ] SQL Server restarted with new settings.
+)
+exit /b 0
+
+
+:: ============================================================
+:: Enable IIS + FTP Windows features
+:: ============================================================
+:EnableIisFeatures
+echo   Enabling IIS + FTP Windows features (this can take a minute)...
+powershell -NoProfile -Command "$features = 'IIS-WebServerRole','IIS-WebServer','IIS-CommonHttpFeatures','IIS-DefaultDocument','IIS-DirectoryBrowsing','IIS-HttpErrors','IIS-StaticContent','IIS-HttpRedirect','IIS-ApplicationDevelopment','IIS-NetFxExtensibility45','IIS-ISAPIExtensions','IIS-ISAPIFilter','IIS-ASPNET45','IIS-HealthAndDiagnostics','IIS-HttpLogging','IIS-Security','IIS-RequestFiltering','IIS-BasicAuthentication','IIS-Performance','IIS-WebServerManagementTools','IIS-ManagementConsole','IIS-ManagementScriptingTools','IIS-FTPServer','IIS-FTPSvc','IIS-FTPExtensibility'; $bad=$false; foreach ($f in $features) { try { Enable-WindowsOptionalFeature -Online -FeatureName $f -All -NoRestart -ErrorAction Stop | Out-Null } catch { Write-Host ('  [WARN ] Could not enable ' + $f + ': ' + $_.Exception.Message); $bad=$true } }; if ($bad) { exit 1 } else { exit 0 }"
+if !errorlevel! neq 0 (
+    echo   [WARN ] Some IIS/FTP features did not enable cleanly. Check "Turn Windows features on or off".
+) else (
+    echo   [ OK  ] IIS + FTP features enabled.
+)
+exit /b 0
+
+
+:: ============================================================
+:: Configure IIS: virtual directory "RT" under Default Web Site,
+:: MIME type for ".", and FTP site "RT" bound to appFolder.
+:: ============================================================
+:ConfigureIisSites
+set "appcmd=%windir%\system32\inetsrv\appcmd.exe"
+if not exist "%appcmd%" (
+    echo   [SKIP ] appcmd.exe not found. Ensure IIS is installed then re-run.
+    exit /b 0
+)
+
+echo   Creating virtual directory "RT" under Default Web Site...
+"%appcmd%" delete vdir "Default Web Site/RT" >nul 2>&1
+"%appcmd%" add vdir /app.name:"Default Web Site/" /path:"/RT" /physicalPath:"%appFolder%" /userName:"%rtUser%" /password:"%rtPassword%"
+if !errorlevel! neq 0 (
+    echo   [WARN ] Failed to create RT virtual directory.
+) else (
+    echo   [ OK  ] Virtual directory /RT created.
+)
+
+echo   Adding MIME type "." = application/octet-stream ...
+"%appcmd%" set config "Default Web Site/RT" -section:staticContent /+"[fileExtension='.',mimeType='application/octet-stream']" /commit:apphost >nul 2>&1
+if !errorlevel! neq 0 (
+    echo   [WARN ] MIME type add failed (may already exist).
+) else (
+    echo   [ OK  ] MIME type added.
+)
+
+echo   Creating FTP site "RT" bound to %appFolder% ...
+"%appcmd%" delete site "RT" >nul 2>&1
+"%appcmd%" add site /name:"RT" /physicalPath:"%appFolder%" /bindings:"ftp/*:21:"
+if !errorlevel! neq 0 (
+    echo   [WARN ] Failed to create FTP site.
+) else (
+    "%appcmd%" set site "RT" /ftpServer.security.ssl.controlChannelPolicy:"SslAllow" /ftpServer.security.ssl.dataChannelPolicy:"SslAllow" >nul 2>&1
+    "%appcmd%" set site "RT" /ftpServer.security.authentication.basicAuthentication.enabled:"true" >nul 2>&1
+    "%appcmd%" set site "RT" /ftpServer.security.authentication.anonymousAuthentication.enabled:"false" >nul 2>&1
+    "%appcmd%" set config -section:system.ftpServer/security/authorization /+"[accessType='Allow',users='%rtUser%',permissions='Read,Write']" /commit:apphost >nul 2>&1
+    "%appcmd%" set vdir "RT/" /userName:"%rtUser%" /password:"%rtPassword%" >nul 2>&1
+    echo   [ OK  ] FTP site created and secured for user "%rtUser%".
+)
+
+echo   Restarting Default Web Site and FTP site "RT"...
+"%appcmd%" stop  site "Default Web Site" >nul 2>&1
+"%appcmd%" start site "Default Web Site" >nul 2>&1
+"%appcmd%" stop  site "RT" >nul 2>&1
+"%appcmd%" start site "RT" >nul 2>&1
+echo   [ OK  ] IIS sites restarted.
+exit /b 0
+
+
+:: ============================================================
+:: Restore the Ashley database from Z_Reset*.zip
+:: ============================================================
+:RestoreAshleyDb
+set "resetZip=%appFolder%\files\Z_Reset.zip"
+set "restoreDir=%appFolder%\files\ashley_restore"
+
+if not exist "%resetZip%" (
+    echo   [SKIP ] Z_Reset.zip not found; skipping DB restore.
+    exit /b 0
+)
+
+sc query "MSSQL$SQLEXPRESS" >nul 2>&1
+if !errorlevel! neq 0 (
+    echo   [SKIP ] MSSQL$SQLEXPRESS not installed; skipping DB restore.
+    exit /b 0
+)
+
+echo   Extracting Z_Reset.zip ...
+if not exist "%restoreDir%" mkdir "%restoreDir%"
+powershell -NoProfile -Command "try { Expand-Archive -Path '%resetZip%' -DestinationPath '%restoreDir%' -Force } catch { exit 1 }"
+if !errorlevel! neq 0 (
+    echo   [ERROR] Failed to extract Z_Reset.zip.
     exit /b 1
 )
 
-echo     [ OK  ] Saved to: !fileDest!
+set "bakFile="
+for /f "delims=" %%F in ('dir /b /s "%restoreDir%\*.bak" 2^>nul') do (
+    if not defined bakFile set "bakFile=%%F"
+)
+if not defined bakFile (
+    echo   [ERROR] No .bak file found inside Z_Reset.zip.
+    exit /b 1w
+)
+echo   Backup file: !bakFile!
+
+where sqlcmd >nul 2>&1
+if !errorlevel! neq 0 (
+    echo   [SKIP ] sqlcmd not found on PATH. Install SSMS/mssql-tools, then run:
+    echo           sqlcmd -S .\SQLEXPRESS -U sa -P %newPassword% ^-Q ^"RESTORE DATABASE Ashley FROM DISK='!bakFile!' WITH REPLACE^"
+    exit /b 0
+)
+
+echo   Restoring "Ashley" via sqlcmd ...
+sqlcmd -S .\SQLEXPRESS -U sa -P "%newPassword%" -Q "RESTORE DATABASE [Ashley] FROM DISK=N'!bakFile!' WITH REPLACE, NOUNLOAD, STATS=10"
+if !errorlevel! neq 0 (
+    echo   [WARN ] RESTORE reported an error. You can restore manually from SSMS.
+) else (
+    echo   [ OK  ] Ashley database restored.
+)
 exit /b 0
