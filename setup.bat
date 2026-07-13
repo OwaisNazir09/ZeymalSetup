@@ -123,23 +123,73 @@ exit /b %rc%
 echo.
 echo === Installing SQL Server 2022 Express ===
 
+:: Skip if the SQLEXPRESS instance is already present
+sc query "MSSQL$SQLEXPRESS" >nul 2>&1
+if !errorlevel! equ 0 (
+    echo SQL Server SQLEXPRESS instance already installed. Skipping.
+    goto :InstallSqlModern_SSMS
+)
+
 set "SqlBootstrap=%DownloadPath%\SQL2022-SSEI-Expr.exe"
+set "SqlMediaDir=%DownloadPath%\SQLMedia"
+set "SqlMediaFile=%SqlMediaDir%\SQLEXPR_x64_ENU.exe"
+set "SqlSetupDir=%SqlMediaDir%\extract"
+
 call :Download "https://go.microsoft.com/fwlink/p/?linkid=2216019&clcid=0x409&culture=en-us&country=us" "%SqlBootstrap%" "SQL Server 2022 Express bootstrapper"
 if !errorlevel! neq 0 (
-    echo Failed to download SQL Server 2022 Express.
+    echo Failed to download SQL Server 2022 Express bootstrapper.
     pause
     exit /b 1
 )
 
-echo Starting SQL Server installation...
-"%SqlBootstrap%" /ACTION=Install /IACCEPTSQLSERVERLICENSETERMS /QUIET /HIDEPROGRESSBAR ^
-    /INSTANCENAME=SQLEXPRESS ^
+if not exist "%SqlMediaDir%" mkdir "%SqlMediaDir%"
+
+if exist "%SqlMediaFile%" (
+    echo Media package already present, skipping download.
+) else (
+    echo.
+    echo Step 1/3: Downloading full SQL Server media package ^(~280 MB^)...
+    echo   This uses Microsoft's downloader and shows its own progress window.
+    "%SqlBootstrap%" /ACTION=Download /MEDIAPATH="%SqlMediaDir%" /MEDIATYPE=Core /LANGUAGE=en-US /QUIET /HIDEPROGRESSBAR
+    if !errorlevel! neq 0 (
+        echo Failed to download SQL Server media.
+        pause
+        exit /b 1
+    )
+    if not exist "%SqlMediaFile%" (
+        echo Expected media file was not produced: %SqlMediaFile%
+        pause
+        exit /b 1
+    )
+)
+
+echo.
+echo Step 2/3: Extracting media to %SqlSetupDir% ...
+if not exist "%SqlSetupDir%" mkdir "%SqlSetupDir%"
+"%SqlMediaFile%" /X:"%SqlSetupDir%" /Q
+if !errorlevel! neq 0 (
+    echo Failed to extract SQL Server media.
+    pause
+    exit /b 1
+)
+if not exist "%SqlSetupDir%\setup.exe" (
+    echo setup.exe not found after extraction at %SqlSetupDir%\setup.exe
+    pause
+    exit /b 1
+)
+
+echo.
+echo Step 3/3: Running SQL Server setup ^(silent^)...
+"%SqlSetupDir%\setup.exe" /Q /IACCEPTSQLSERVERLICENSETERMS /ACTION=INSTALL ^
     /FEATURES=SQLENGINE ^
+    /INSTANCENAME=SQLEXPRESS ^
     /SQLSVCACCOUNT="NT Service\MSSQL$SQLEXPRESS" ^
     /SQLSYSADMINACCOUNTS="BUILTIN\ADMINISTRATORS" ^
     /SECURITYMODE=SQL ^
     /SAPWD="%newPassword%" ^
-    /TCPENABLED=1
+    /TCPENABLED=1 ^
+    /NPENABLED=1 ^
+    /UPDATEENABLED=False
 
 if !errorlevel! neq 0 (
     echo SQL Server installation reported an error. Check logs at:
@@ -148,6 +198,8 @@ if !errorlevel! neq 0 (
     exit /b 1
 )
 echo SQL Server 2022 Express installed successfully.
+
+:InstallSqlModern_SSMS
 
 echo.
 echo === Installing SQL Server Management Studio (SSMS) ===
