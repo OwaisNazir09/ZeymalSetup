@@ -27,11 +27,10 @@ echo.
 echo [1/14] Checking administrator privileges...
 net session >nul 2>&1
 if errorlevel 1 (
+    set "failStep=1/14 admin privileges check"
     echo   [ERROR] This script requires administrator privileges.
     echo           Right-click the script and choose "Run as administrator".
-    echo.
-    pause
-    exit /b 1
+    goto :fatal
 )
 echo   [ OK  ] Running with administrator privileges.
 echo.
@@ -45,11 +44,10 @@ echo   Detected OS: %windowsName%
 
 echo %windowsName% | findstr /I /C:"Windows 7" /C:"Windows 8" /C:"Windows 10" /C:"Windows 11" >nul
 if errorlevel 1 (
+    set "failStep=2/14 Windows version detection"
     echo   [ERROR] Unsupported Windows version.
     echo           This installer supports Windows 7, 8, 10, and 11 only.
-    echo.
-    pause
-    exit /b 1
+    goto :fatal
 )
 echo   [ OK  ] Supported Windows version detected.
 echo.
@@ -61,7 +59,7 @@ echo [3/14] Configuring "postgres" user account...
 set "newUser=postgres"
 set "newPassword=362611"
 call :EnsureUser "%newUser%" "%newPassword%" "0"
-if !errorlevel! neq 0 ( pause & exit /b 1 )
+if !errorlevel! neq 0 ( set "failStep=3/14 create postgres user" & goto :fatal )
 echo.
 
 :: ------------------------------------------------------------
@@ -71,7 +69,7 @@ echo [4/14] Configuring "RT" user account for IIS/FTP...
 set "rtUser=RT"
 set "rtPassword=master"
 call :EnsureUser "%rtUser%" "%rtPassword%" "1"
-if !errorlevel! neq 0 ( pause & exit /b 1 )
+if !errorlevel! neq 0 ( set "failStep=4/14 create RT user" & goto :fatal )
 echo.
 
 :: ------------------------------------------------------------
@@ -82,10 +80,10 @@ set "appFolder=C:\Users\%newUser%\zeymal"
 if not exist "%appFolder%" (
     mkdir "%appFolder%"
     if !errorlevel! neq 0 (
+        set "failStep=5/14 create application folder"
         echo   [ERROR] Failed to create application folder.
         echo           Path: %appFolder%
-        pause
-        exit /b 1
+        goto :fatal
     )
     echo   [ OK  ] Created: %appFolder%
 ) else (
@@ -102,10 +100,10 @@ set "DownloadPath=C:\Users\%newUser%\Downloads"
 if not exist "%DownloadPath%" (
     mkdir "%DownloadPath%"
     if !errorlevel! neq 0 (
+        set "failStep=6/14 create Downloads folder"
         echo   [ERROR] Failed to create Downloads folder.
         echo           Path: %DownloadPath%
-        pause
-        exit /b 1
+        goto :fatal
     )
     echo   [ OK  ] Created: %DownloadPath%
 ) else (
@@ -120,14 +118,16 @@ echo [7/14] Installing SQL Server...
 echo %windowsName% | findstr /I /C:"Windows 11" /C:"Windows 10" >nul
 if not errorlevel 1 (
     call :InstallSqlModern
+    if !errorlevel! neq 0 ( set "failStep=7/14 SQL Server 2022 install" & goto :fatal )
 ) else (
     echo %windowsName% | findstr /I /C:"Windows 7" /C:"Windows 8" >nul
     if not errorlevel 1 (
         call :InstallSqlLegacy
+        if !errorlevel! neq 0 ( set "failStep=7/14 SQL Server 2014 install" & goto :fatal )
     ) else (
+        set "failStep=7/14 SQL Server install (unsupported Windows)"
         echo   [ERROR] Unsupported Windows version for SQL Server install.
-        pause
-        exit /b 1
+        goto :fatal
     )
 )
 echo.
@@ -145,9 +145,9 @@ echo.
 echo [9/14] Downloading Zeymal application files...
 call :DownloadZeymalFiles
 if !errorlevel! neq 0 (
+    set "failStep=9/14 download Zeymal application files"
     echo   [ERROR] One or more Zeymal files failed to download.
-    pause
-    exit /b 1
+    goto :fatal
 )
 echo.
 
@@ -202,13 +202,37 @@ echo   IIS Virtual Dir  : http://localhost/RT
 echo   FTP site         : ftp://localhost/  (site name: RT)
 echo ============================================================
 echo   Next manual steps (per install guide):
-echo     * Start Zeymal, copy File > Zeymal Signature, share for license
-echo     * Load the license via File > Zeymal Configuration > Load Config
+echo     * Start Zeymal, copy File ^> Zeymal Signature, share for license
+echo     * Load the license via File ^> Zeymal Configuration ^> Load Config
 echo     * Restart Zeymal and login with admin/admin
 echo ============================================================
 echo.
-pause
+echo   Setup finished successfully. Press any key to close this window...
+pause >nul
 exit /b 0
+
+
+:: ============================================================
+:: :fatal - central error handler. NEVER let the window close
+:: without user acknowledgment.
+:: ============================================================
+:fatal
+echo.
+echo ============================================================
+echo   SETUP FAILED
+echo ============================================================
+if defined failStep (
+    echo   Failed at step: !failStep!
+) else (
+    echo   Failed at an unknown step.
+)
+echo.
+echo   Scroll up to read the error above.
+echo   This window will stay open until you press a key.
+echo ============================================================
+echo.
+pause >nul
+exit /b 1
 
 
 :: ============================================================
@@ -288,7 +312,18 @@ echo   Step 1/3: Fetching SQL Server 2022 Express bootstrapper...
 call :Download "https://go.microsoft.com/fwlink/p/?linkid=2216019&clcid=0x409&culture=en-us&country=us" "%SqlBootstrap%" "SQL Server 2022 Express bootstrapper"
 if !errorlevel! neq 0 (
     echo   [ERROR] Failed to download SQL Server 2022 Express bootstrapper.
-    pause
+    exit /b 1
+)
+if not exist "%SqlBootstrap%" (
+    echo   [ERROR] Bootstrapper file missing after download:
+    echo           %SqlBootstrap%
+    exit /b 1
+)
+for %%A in ("%SqlBootstrap%") do set "SqlBootstrapSize=%%~zA"
+if !SqlBootstrapSize! LSS 100000 (
+    echo   [ERROR] Bootstrapper file looks too small ^(!SqlBootstrapSize! bytes^).
+    echo           The download probably returned an error page instead of the exe.
+    echo           Delete "%SqlBootstrap%" and re-run.
     exit /b 1
 )
 
@@ -298,18 +333,24 @@ if exist "%SqlMediaFile%" (
     echo   [ OK  ] Media package already present. Skipping media download.
 ) else (
     echo.
-    echo   Step 2/3: Downloading full SQL Server media (~280 MB)...
-    echo           Microsoft's downloader will show its own progress window.
-    "%SqlBootstrap%" /ACTION=Download /MEDIAPATH="%SqlMediaDir%" /MEDIATYPE=Core /LANGUAGE=en-US /QUIET /HIDEPROGRESSBAR
-    if !errorlevel! neq 0 (
-        echo   [ERROR] Failed to download SQL Server media.
-        pause
+    echo   Step 2/3: Downloading full SQL Server media ^(~280 MB^)...
+    echo           Microsoft's downloader will open its own progress window.
+    echo           This can take 5-15 minutes on a home connection. Please wait.
+    echo           Do NOT close this window.
+    start "SQL Server 2022 Express Media Download" /wait "%SqlBootstrap%" /ACTION=Download /MEDIAPATH="%SqlMediaDir%" /MEDIATYPE=Core /LANGUAGE=en-US /QUIET
+    set "SqlBootExit=!errorlevel!"
+    echo           Bootstrapper exit code: !SqlBootExit!
+    if !SqlBootExit! neq 0 (
+        echo   [ERROR] SQL Server media download failed ^(exit !SqlBootExit!^).
+        echo           You can download the media manually from:
+        echo             https://www.microsoft.com/en-us/download/details.aspx?id=104781
+        echo           and place SQLEXPR_x64_ENU.exe at:
+        echo             %SqlMediaFile%
         exit /b 1
     )
     if not exist "%SqlMediaFile%" (
         echo   [ERROR] Expected media file was not produced:
         echo           %SqlMediaFile%
-        pause
         exit /b 1
     )
     echo   [ OK  ] Media package downloaded.
@@ -318,20 +359,19 @@ if exist "%SqlMediaFile%" (
 echo.
 echo   Step 3/3: Extracting media and running silent install...
 if not exist "%SqlSetupDir%" mkdir "%SqlSetupDir%"
-"%SqlMediaFile%" /X:"%SqlSetupDir%" /Q
+start "SQL Server Media Extract" /wait "%SqlMediaFile%" /X:"%SqlSetupDir%" /Q
 if !errorlevel! neq 0 (
     echo   [ERROR] Failed to extract SQL Server media.
-    pause
     exit /b 1
 )
 if not exist "%SqlSetupDir%\setup.exe" (
     echo   [ERROR] setup.exe not found after extraction:
     echo           %SqlSetupDir%\setup.exe
-    pause
     exit /b 1
 )
 
-echo   Running SQL Server setup (silent, this can take several minutes)...
+echo   Running SQL Server setup ^(silent, this can take several minutes^)...
+echo   Do NOT close this window.
 "%SqlSetupDir%\setup.exe" /Q /IACCEPTSQLSERVERLICENSETERMS /ACTION=INSTALL ^
     /FEATURES=SQLENGINE ^
     /INSTANCENAME=SQLEXPRESS ^
@@ -342,12 +382,13 @@ echo   Running SQL Server setup (silent, this can take several minutes)...
     /TCPENABLED=1 ^
     /NPENABLED=1 ^
     /UPDATEENABLED=False
+set "SqlSetupExit=!errorlevel!"
+echo   SQL Server setup exit code: !SqlSetupExit!
 
-if !errorlevel! neq 0 (
+if !SqlSetupExit! neq 0 (
     echo   [ERROR] SQL Server installation reported an error.
     echo           Check setup logs at:
     echo           %ProgramFiles%\Microsoft SQL Server\160\Setup Bootstrap\Log
-    pause
     exit /b 1
 )
 echo   [ OK  ] SQL Server 2022 Express installed successfully.
@@ -387,11 +428,11 @@ call :Download "%SqlLegacyUrl%" "%SqlLegacyInstaller%" "SQL Server 2014 Express 
 if !errorlevel! neq 0 (
     echo   [ERROR] Failed to download SQL Server 2014 Express.
     echo           Manual download: https://www.microsoft.com/en-us/download/details.aspx?id=42299
-    pause
     exit /b 1
 )
 
-echo   Running SQL Server setup (silent, this can take several minutes)...
+echo   Running SQL Server setup ^(silent, this can take several minutes^)...
+echo   Do NOT close this window.
 "%SqlLegacyInstaller%" /Q /IACCEPTSQLSERVERLICENSETERMS /ACTION=INSTALL ^
     /FEATURES=SQLENGINE ^
     /INSTANCENAME=SQLEXPRESS ^
@@ -400,10 +441,11 @@ echo   Running SQL Server setup (silent, this can take several minutes)...
     /SECURITYMODE=SQL ^
     /SAPWD="%newPassword%" ^
     /TCPENABLED=1
+set "SqlLegacyExit=!errorlevel!"
+echo   SQL Server setup exit code: !SqlLegacyExit!
 
-if !errorlevel! neq 0 (
+if !SqlLegacyExit! neq 0 (
     echo   [ERROR] SQL Server installation reported an error. Check the setup logs.
-    pause
     exit /b 1
 )
 echo   [ OK  ] SQL Server 2014 Express installed successfully.
@@ -427,12 +469,12 @@ if exist "%JavaInstaller%" (
 ) else (
     call :Download "%JavaUrl%" "%JavaInstaller%" "Java JRE 8u271"
     if !errorlevel! neq 0 (
-        echo   [ERROR] Failed to download Java JRE 8u271.
+        echo   [WARN ] Failed to download Java JRE 8u271.
         echo           Oracle now gates JRE 8 downloads. Place the file manually at:
         echo             %JavaInstaller%
         echo           Then re-run this script, or install Java by hand.
-        pause
-        exit /b 1
+        echo           Continuing with the rest of the setup...
+        exit /b 0
     )
 )
 
@@ -688,7 +730,7 @@ for /f "delims=" %%F in ('dir /b /s "%restoreDir%\*.bak" 2^>nul') do (
 )
 if not defined bakFile (
     echo   [ERROR] No .bak file found inside Z_Reset.zip.
-    exit /b 1w
+    exit /b 1
 )
 echo   Backup file: !bakFile!
 
