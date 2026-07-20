@@ -531,10 +531,15 @@ if exist "!fileDest!" (
 
 echo     Downloading...
 curl.exe -L --fail --show-error --output "!fileDest!" "!fileUrl!"
-if !errorlevel! neq 0 (
-    echo     [ERROR] Download failed.
+set "curlRc=!errorlevel!"
+echo     Exit code: !curlRc!
+if !curlRc! neq 0 (
+    echo     [ERROR] Download failed (rc=!curlRc!).
     echo            URL: !fileUrl!
     if exist "!fileDest!" del /q "!fileDest!" >nul 2>&1
+    echo.
+    echo     Window will stay open. Press any key to continue...
+    pause >nul
     exit /b 1
 )
 echo     [ OK  ] Saved to: !fileDest!
@@ -544,93 +549,44 @@ exit /b 0
 :UnzipZeymalFiles
 set "unzipFailed=0"
 
-echo.
-echo   [1/4] Extracting (Z_Replace_Base).zip...
-if exist "%ZeymalFiles%\(Z_Replace_Base).zip" (
-    powershell -command "Expand-Archive -Path '%ZeymalFiles%\(Z_Replace_Base).zip' -DestinationPath '%ZeymalFiles%' -Force"
-    if !errorlevel! neq 0 (
-        echo     [ERROR] Failed to extract (Z_Replace_Base).zip
-        set "unzipFailed=1"
-    ) else (
-        echo     [ OK  ] Extracted (Z_Replace_Base).zip
-        echo     Deleting zip file...
-        del /q "%ZeymalFiles%\(Z_Replace_Base).zip" >nul 2>&1
-        if !errorlevel! neq 0 (
-            echo     [WARN] Could not delete (Z_Replace_Base).zip
-        ) else (
-            echo     [ OK  ] Removed (Z_Replace_Base).zip
-        )
-    )
-) else (
-    echo     [WARN] (Z_Replace_Base).zip not found
-)
-
-echo.
-echo   [2/4] Extracting jre-8u271-windows-i586-iftw.zip...
-if exist "%ZeymalFiles%\jre-8u271-windows-i586-iftw.zip" (
-    powershell -command "Expand-Archive -Path '%ZeymalFiles%\jre-8u271-windows-i586-iftw.zip' -DestinationPath '%ZeymalFiles%' -Force"
-    if !errorlevel! neq 0 (
-        echo     [ERROR] Failed to extract jre-8u271-windows-i586-iftw.zip
-        set "unzipFailed=1"
-    ) else (
-        echo     [ OK  ] Extracted jre-8u271-windows-i586-iftw.zip
-        echo     Deleting zip file...
-        del /q "%ZeymalFiles%\jre-8u271-windows-i586-iftw.zip" >nul 2>&1
-        if !errorlevel! neq 0 (
-            echo     [WARN] Could not delete jre-8u271-windows-i586-iftw.zip
-        ) else (
-            echo     [ OK  ] Removed jre-8u271-windows-i586-iftw.zip
-        )
-    )
-) else (
-    echo     [WARN] jre-8u271-windows-i586-iftw.zip not found
-)
-
-echo.
-echo   [3/4] Extracting Zeymal.zip...
-if exist "%ZeymalFiles%\Zeymal.zip" (
-    powershell -command "Expand-Archive -Path '%ZeymalFiles%\Zeymal.zip' -DestinationPath '%ZeymalFiles%' -Force"
-    if !errorlevel! neq 0 (
-        echo     [ERROR] Failed to extract Zeymal.zip
-        set "unzipFailed=1"
-    ) else (
-        echo     [ OK  ] Extracted Zeymal.zip
-        echo     Deleting zip file...
-        del /q "%ZeymalFiles%\Zeymal.zip" >nul 2>&1
-        if !errorlevel! neq 0 (
-            echo     [WARN] Could not delete Zeymal.zip
-        ) else (
-            echo     [ OK  ] Removed Zeymal.zip
-        )
-    )
-) else (
-    echo     [WARN] Zeymal.zip not found
-)
-
-echo.
-echo   [4/4] Extracting Z_Reset_1034.zip...
-if exist "%ZeymalFiles%\Z_Reset_1034.zip" (
-    powershell -command "Expand-Archive -Path '%ZeymalFiles%\Z_Reset_1034.zip' -DestinationPath '%ZeymalFiles%' -Force"
-    if !errorlevel! neq 0 (
-        echo     [ERROR] Failed to extract Z_Reset_1034.zip
-        set "unzipFailed=1"
-    ) else (
-        echo     [ OK  ] Extracted Z_Reset_1034.zip
-        echo     Deleting zip file...
-        del /q "%ZeymalFiles%\Z_Reset_1034.zip" >nul 2>&1
-        if !errorlevel! neq 0 (
-            echo     [WARN] Could not delete Z_Reset_1034.zip
-        ) else (
-            echo     [ OK  ] Removed Z_Reset_1034.zip
-        )
-    )
-) else (
-    echo     [WARN] Z_Reset_1034.zip not found
-)
+call :ExtractZeymalItem "(Z_Replace_Base).zip"            1 4
+call :ExtractZeymalItem "jre-8u271-windows-i586-iftw.zip" 2 4
+call :ExtractZeymalItem "Zeymal.zip"                      3 4
+call :ExtractZeymalItem "Z_Reset_1034.zip"                4 4
 
 if !unzipFailed! neq 0 (
     exit /b 1
 )
+exit /b 0
+
+
+:ExtractZeymalItem
+set "ez_name=%~1"
+set "ez_idx=%~2"
+set "ez_total=%~3"
+set "ez_zip=%ZeymalFiles%\%ez_name%"
+set "ez_marker=%ZeymalFiles%\%ez_name%.extracted"
+
+echo.
+echo   [%ez_idx%/%ez_total%] %ez_name%
+if exist "!ez_marker!" (
+    echo     [ OK  ] Already extracted. Skipping.
+    exit /b 0
+)
+if not exist "!ez_zip!" (
+    echo     [WARN] %ez_name% not found. Skipping extraction.
+    exit /b 0
+)
+
+echo     Extracting...
+powershell -NoProfile -command "try { Expand-Archive -Path '!ez_zip!' -DestinationPath '%ZeymalFiles%' -Force } catch { exit 1 }"
+if !errorlevel! neq 0 (
+    echo     [ERROR] Failed to extract %ez_name%
+    set "unzipFailed=1"
+    exit /b 1
+)
+echo     [ OK  ] Extracted %ez_name%
+> "!ez_marker!" echo extracted
 exit /b 0
 
 
