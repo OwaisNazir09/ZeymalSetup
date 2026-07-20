@@ -474,7 +474,7 @@ if not exist "%ZeymalFiles%" (
 
 set "ZeymalBaseUrl=http://1rsrs.rationaltabs.com/zml_installer/"
 
-set "ZeymalRplaceXip=%ZeymalBaseUrl%Z Replace Base.zip"
+set "ZeymalRplaceXip=%ZeymalBaseUrl%(Z%20Replace%20Base).zip"
 set "ZeymalIftwInstaller=%ZeymalBaseUrl%jre-8u271-windows-i586-iftw.zip"
 set "Zeymalexe=%ZeymalBaseUrl%Zeymal.zip"
 set "Zeymaljar=%ZeymalBaseUrl%Fonts.zip"
