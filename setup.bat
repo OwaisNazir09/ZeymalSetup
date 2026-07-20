@@ -399,9 +399,21 @@ echo   [ OK  ] SQL Server 2022 Express installed successfully.
 echo.
 echo   --- SQL Server Management Studio (SSMS) ---
 
-for /f "delims=" %%A in ('powershell -NoProfile -Command "$paths = @('HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server Management Studio','HKLM:\SOFTWARE\WOW6432Node\Microsoft\Microsoft SQL Server Management Studio'); $found = $false; foreach ($p in $paths) { if (Test-Path $p) { $subs = Get-ChildItem $p -ErrorAction SilentlyContinue; if ($subs) { $found = $true; break } } }; if (-not $found) { $ssms = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*','HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue ^| Where-Object { $_.DisplayName -like 'SSMS*' -or $_.DisplayName -like 'SQL Server Management Studio*' } ^| Select-Object -First 1; if ($ssms) { $found = $true } }; if ($found) { 'INSTALLED' } else { 'MISSING' }"') do set "SsmsStatus=%%A"
+set "SsmsFound=0"
 
-if /I "!SsmsStatus!"=="INSTALLED" (
+reg query "HKLM\SOFTWARE\Microsoft\Microsoft SQL Server Management Studio" /s >nul 2>&1
+if !errorlevel! equ 0 set "SsmsFound=1"
+
+reg query "HKLM\SOFTWARE\WOW6432Node\Microsoft\Microsoft SQL Server Management Studio" /s >nul 2>&1
+if !errorlevel! equ 0 set "SsmsFound=1"
+
+for %%D in (18 19 20 21) do (
+    if exist "%ProgramFiles(x86)%\Microsoft SQL Server Management Studio %%D\Common7\IDE\Ssms.exe" set "SsmsFound=1"
+    if exist "%ProgramFiles%\Microsoft SQL Server Management Studio %%D\Common7\IDE\Ssms.exe"      set "SsmsFound=1"
+    if exist "%ProgramFiles%\Microsoft SQL Server Management Studio %%D\Release\Common7\IDE\Ssms.exe" set "SsmsFound=1"
+)
+
+if "!SsmsFound!"=="1" (
     echo   [ OK  ] SSMS is already installed. Skipping.
     exit /b 0
 )
