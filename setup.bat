@@ -33,7 +33,7 @@ if errorlevel 1 (
     goto :fatal
 )
 echo   [ OK  ] Running with administrator privileges.
-echo.
+call :stepPause
 
 :: ------------------------------------------------------------
 :: [2/14] Detect and validate Windows version
@@ -50,7 +50,7 @@ if errorlevel 1 (
     goto :fatal
 )
 echo   [ OK  ] Supported Windows version detected.
-echo.
+call :stepPause
 
 :: ------------------------------------------------------------
 :: [3/14] Create the "postgres" user (used as SQL SA password holder)
@@ -60,7 +60,7 @@ set "newUser=postgres"
 set "newPassword=362611"
 call :EnsureUser "%newUser%" "%newPassword%" "0"
 if !errorlevel! neq 0 ( set "failStep=3/14 create postgres user" & goto :fatal )
-echo.
+call :stepPause
 
 :: ------------------------------------------------------------
 :: [4/14] Create the "RT" user (used by IIS + FTP)
@@ -70,7 +70,7 @@ set "rtUser=RT"
 set "rtPassword=master"
 call :EnsureUser "%rtUser%" "%rtPassword%" "1"
 if !errorlevel! neq 0 ( set "failStep=4/14 create RT user" & goto :fatal )
-echo.
+call :stepPause
 
 :: ------------------------------------------------------------
 :: [5/14] Create the application folder
@@ -90,7 +90,7 @@ if not exist "%appFolder%" (
     echo   [ OK  ] Already exists: %appFolder%
 )
 echo   [NOTE ] The manual suggests using a non-C drive if available.
-echo.
+call :stepPause
 
 :: ------------------------------------------------------------
 :: [6/14] Create the Downloads folder
@@ -109,7 +109,7 @@ if not exist "%DownloadPath%" (
 ) else (
     echo   [ OK  ] Already exists: %DownloadPath%
 )
-echo.
+call :stepPause
 
 :: ------------------------------------------------------------
 :: [7/14] Install SQL Server (edition depends on Windows version)
@@ -130,7 +130,7 @@ if not errorlevel 1 (
         goto :fatal
     )
 )
-echo.
+call :stepPause
 
 :: ------------------------------------------------------------
 :: [8/14] Install Java Runtime Environment (from extracted zip)
@@ -143,14 +143,14 @@ if !errorlevel! neq 0 (
     echo   [ERROR] One or more Zeymal files failed to download.
     goto :fatal
 )
-echo.
+call :stepPause
 
 :: ------------------------------------------------------------
 :: [9/14] Download Zeymal application files
 :: ------------------------------------------------------------
 echo [9/14] Downloading Zeymal application files...
 call :InstallJava
-echo.
+call :stepPause
 
 :: ------------------------------------------------------------
 :: [10/14] Deploy files into the Zeymal folder
@@ -161,35 +161,35 @@ if !errorlevel! neq 0 (
     echo   [WARN ] Deployment finished with warnings.
     call :ackWarn
 )
-echo.
+call :stepPause
 
 :: ------------------------------------------------------------
 :: [11/14] Configure SQL Server (TCP/IP, port 1433, service LogOn)
 :: ------------------------------------------------------------
 echo [11/14] Configuring SQL Server networking and service...
 call :ConfigureSqlServer
-echo.
+call :stepPause
 
 :: ------------------------------------------------------------
 :: [12/14] Enable IIS + FTP Windows features
 :: ------------------------------------------------------------
 echo [12/14] Enabling IIS + FTP features...
 call :EnableIisFeatures
-echo.
+call :stepPause
 
 :: ------------------------------------------------------------
 :: [13/14] Configure IIS virtual directory and FTP site
 :: ------------------------------------------------------------
 echo [13/14] Configuring IIS "RT" virtual directory and FTP site...
 call :ConfigureIisSites
-echo.
+call :stepPause
 
 :: ------------------------------------------------------------
 :: [14/14] Restore Ashley database
 :: ------------------------------------------------------------
 echo [14/14] Restoring Ashley database...
 call :RestoreAshleyDb
-echo.
+call :stepPause
 
 echo ============================================================
 echo   Setup complete
@@ -222,6 +222,17 @@ exit /b 0
 :ackWarn
 echo.
 echo   ^>^> A warning/error occurred above. Press any key to continue...
+pause >nul
+exit /b 0
+
+
+:: ============================================================
+:: :stepPause - pause after every step so the user can review
+:: output before the next step runs. NEVER auto-advance.
+:: ============================================================
+:stepPause
+echo.
+echo   -- Press any key to continue to the next step --
 pause >nul
 exit /b 0
 
