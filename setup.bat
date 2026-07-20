@@ -159,6 +159,7 @@ echo [10/14] Deploying files into %appFolder%...
 call :DeployZeymalFiles
 if !errorlevel! neq 0 (
     echo   [WARN ] Deployment finished with warnings.
+    call :ackWarn
 )
 echo.
 
@@ -209,6 +210,18 @@ echo     * Restart Zeymal and login with admin/admin
 echo ============================================================
 echo.
 echo   Setup finished successfully. Press any key to close this window...
+pause >nul
+exit /b 0
+
+
+:: ============================================================
+:: :ackWarn - print a "press key to continue" prompt so the user
+:: sees any warning before the script moves on. NEVER let the
+:: window close silently on any failure.
+:: ============================================================
+:ackWarn
+echo.
+echo   ^>^> A warning/error occurred above. Press any key to continue...
 pause >nul
 exit /b 0
 
@@ -267,6 +280,7 @@ if "%eu_admin%"=="1" (
 powershell -NoProfile -Command "try { Set-LocalUser -Name '%eu_user%' -PasswordNeverExpires $true -ErrorAction Stop } catch { exit 1 }"
 if !errorlevel! neq 0 (
     echo   [WARN ] Could not set PasswordNeverExpires on "%eu_user%".
+    call :ackWarn
 ) else (
     echo   [ OK  ] PasswordNeverExpires set on "%eu_user%".
 )
@@ -403,6 +417,7 @@ call :Download "https://aka.ms/ssmsfullsetup" "%SsmsInstaller%" "SSMS"
 if !errorlevel! neq 0 (
     echo   [WARN ] Failed to download SSMS.
     echo           You can install it manually from https://aka.ms/ssmsfullsetup
+    call :ackWarn
     exit /b 0
 )
 
@@ -410,6 +425,7 @@ echo   Installing SSMS (silent)...
 "%SsmsInstaller%" /install /quiet /norestart
 if !errorlevel! neq 0 (
     echo   [WARN ] SSMS installation reported an error. You can install it manually later.
+    call :ackWarn
 ) else (
     echo   [ OK  ] SSMS installed successfully.
 )
@@ -602,6 +618,7 @@ if exist "%JavaInstaller%" (
     if !errorlevel! neq 0 (
         echo   [ERROR] Failed to extract Java installer zip.
         echo   [WARN ] You may need to manually extract and install Java.
+        call :ackWarn
         exit /b 0
     )
     echo   [ OK  ] Java installer extracted.
@@ -609,12 +626,14 @@ if exist "%JavaInstaller%" (
     echo   [WARN ] Java zip file not found at: %JavaZip%
     echo   [WARN ] Java was not downloaded or extracted properly.
     echo   [WARN ] You may need to manually install Java.
+    call :ackWarn
     exit /b 0
 )
 
 if not exist "%JavaInstaller%" (
     echo   [WARN ] Java installer executable not found at: %JavaInstaller%
     echo   [WARN ] You may need to manually install Java.
+    call :ackWarn
     exit /b 0
 )
 
@@ -622,6 +641,7 @@ echo   Installing Java silently (auto-update disabled)...
 "%JavaInstaller%" /s AUTO_UPDATE=Disable STATIC=1 REBOOT=Disable EULA=Disable NOSTARTMENU=Enable WEB_ANALYTICS=Disable
 if !errorlevel! neq 0 (
     echo   [WARN ] Java installation reported an error. You can install it manually if needed.
+    call :ackWarn
     exit /b 0
 )
 echo   [ OK  ] Java JRE 8u271 installed successfully.
@@ -643,11 +663,13 @@ if exist "%zRepZip%" (
     powershell -NoProfile -Command "try { Expand-Archive -Path '%zRepZip%' -DestinationPath '%appFolder%' -Force } catch { exit 1 }"
     if !errorlevel! neq 0 (
         echo   [WARN ] Failed to extract "(Z_Replace_Base).zip".
+        call :ackWarn
     ) else (
         echo   [ OK  ] Extracted.
     )
 ) else (
     echo   [WARN ] "(Z_Replace_Base).zip" not found in %ZeymalFiles%.
+    call :ackWarn
 )
 
 call :CopyIfPresent "%ZeymalFiles%\Zeymal.jar"                      "%appFolder%\Zeymal.jar"
@@ -688,6 +710,7 @@ echo   Setting SQL Server service to Local System account (with desktop interact
 sc config "MSSQL$SQLEXPRESS" obj= "LocalSystem" type= own type= interact >nul 2>&1
 if !errorlevel! neq 0 (
     echo   [WARN ] sc config for MSSQL$SQLEXPRESS failed. Check permissions.
+    call :ackWarn
 ) else (
     echo   [ OK  ] Service configured for Local System.
 )
@@ -697,6 +720,7 @@ net stop "MSSQL$SQLEXPRESS" >nul 2>&1
 net start "MSSQL$SQLEXPRESS" >nul 2>&1
 if !errorlevel! neq 0 (
     echo   [WARN ] Failed to restart MSSQL$SQLEXPRESS. Restart manually.
+    call :ackWarn
 ) else (
     echo   [ OK  ] SQL Server restarted with new settings.
 )
@@ -711,6 +735,7 @@ echo   Enabling IIS + FTP Windows features (this can take a minute)...
 powershell -NoProfile -Command "$features = 'IIS-WebServerRole','IIS-WebServer','IIS-CommonHttpFeatures','IIS-DefaultDocument','IIS-DirectoryBrowsing','IIS-HttpErrors','IIS-StaticContent','IIS-HttpRedirect','IIS-ApplicationDevelopment','IIS-NetFxExtensibility45','IIS-ISAPIExtensions','IIS-ISAPIFilter','IIS-ASPNET45','IIS-HealthAndDiagnostics','IIS-HttpLogging','IIS-Security','IIS-RequestFiltering','IIS-BasicAuthentication','IIS-Performance','IIS-WebServerManagementTools','IIS-ManagementConsole','IIS-ManagementScriptingTools','IIS-FTPServer','IIS-FTPSvc','IIS-FTPExtensibility'; $bad=$false; foreach ($f in $features) { try { Enable-WindowsOptionalFeature -Online -FeatureName $f -All -NoRestart -ErrorAction Stop | Out-Null } catch { Write-Host ('  [WARN ] Could not enable ' + $f + ': ' + $_.Exception.Message); $bad=$true } }; if ($bad) { exit 1 } else { exit 0 }"
 if !errorlevel! neq 0 (
     echo   [WARN ] Some IIS/FTP features did not enable cleanly. Check "Turn Windows features on or off".
+    call :ackWarn
 ) else (
     echo   [ OK  ] IIS + FTP features enabled.
 )
@@ -733,6 +758,7 @@ echo   Creating virtual directory "RT" under Default Web Site...
 "%appcmd%" add vdir /app.name:"Default Web Site/" /path:"/RT" /physicalPath:"%appFolder%" /userName:"%rtUser%" /password:"%rtPassword%"
 if !errorlevel! neq 0 (
     echo   [WARN ] Failed to create RT virtual directory.
+    call :ackWarn
 ) else (
     echo   [ OK  ] Virtual directory /RT created.
 )
@@ -750,6 +776,7 @@ echo   Creating FTP site "RT" bound to %appFolder% ...
 "%appcmd%" add site /name:"RT" /physicalPath:"%appFolder%" /bindings:"ftp/*:21:"
 if !errorlevel! neq 0 (
     echo   [WARN ] Failed to create FTP site.
+    call :ackWarn
 ) else (
     "%appcmd%" set site "RT" /ftpServer.security.ssl.controlChannelPolicy:"SslAllow" /ftpServer.security.ssl.dataChannelPolicy:"SslAllow" >nul 2>&1
     "%appcmd%" set site "RT" /ftpServer.security.authentication.basicAuthentication.enabled:"true" >nul 2>&1
@@ -815,6 +842,7 @@ echo   Restoring "Ashley" via sqlcmd ...
 sqlcmd -S .\SQLEXPRESS -U sa -P "%newPassword%" -Q "RESTORE DATABASE [Ashley] FROM DISK=N'!bakFile!' WITH REPLACE, NOUNLOAD, STATS=10"
 if !errorlevel! neq 0 (
     echo   [WARN ] RESTORE reported an error. You can restore manually from SSMS.
+    call :ackWarn
 ) else (
     echo   [ OK  ] Ashley database restored.
 )
