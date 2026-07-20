@@ -33,7 +33,7 @@ if errorlevel 1 (
     goto :fatal
 )
 echo   [ OK  ] Running with administrator privileges.
-call :stepPause
+echo.
 
 :: ------------------------------------------------------------
 :: [2/14] Detect and validate Windows version
@@ -50,7 +50,7 @@ if errorlevel 1 (
     goto :fatal
 )
 echo   [ OK  ] Supported Windows version detected.
-call :stepPause
+echo.
 
 :: ------------------------------------------------------------
 :: [3/14] Create the "postgres" user (used as SQL SA password holder)
@@ -60,7 +60,7 @@ set "newUser=postgres"
 set "newPassword=362611"
 call :EnsureUser "%newUser%" "%newPassword%" "0"
 if !errorlevel! neq 0 ( set "failStep=3/14 create postgres user" & goto :fatal )
-call :stepPause
+echo.
 
 :: ------------------------------------------------------------
 :: [4/14] Create the "RT" user (used by IIS + FTP)
@@ -70,7 +70,7 @@ set "rtUser=RT"
 set "rtPassword=master"
 call :EnsureUser "%rtUser%" "%rtPassword%" "1"
 if !errorlevel! neq 0 ( set "failStep=4/14 create RT user" & goto :fatal )
-call :stepPause
+echo.
 
 :: ------------------------------------------------------------
 :: [5/14] Create the application folder
@@ -90,7 +90,7 @@ if not exist "%appFolder%" (
     echo   [ OK  ] Already exists: %appFolder%
 )
 echo   [NOTE ] The manual suggests using a non-C drive if available.
-call :stepPause
+echo.
 
 :: ------------------------------------------------------------
 :: [6/14] Create the Downloads folder
@@ -109,7 +109,7 @@ if not exist "%DownloadPath%" (
 ) else (
     echo   [ OK  ] Already exists: %DownloadPath%
 )
-call :stepPause
+echo.
 
 :: ------------------------------------------------------------
 :: [7/14] Install SQL Server (edition depends on Windows version)
@@ -130,7 +130,7 @@ if not errorlevel 1 (
         goto :fatal
     )
 )
-call :stepPause
+echo.
 
 :: ------------------------------------------------------------
 :: [8/14] Install Java Runtime Environment (from extracted zip)
@@ -143,14 +143,14 @@ if !errorlevel! neq 0 (
     echo   [ERROR] One or more Zeymal files failed to download.
     goto :fatal
 )
-call :stepPause
+echo.
 
 :: ------------------------------------------------------------
 :: [9/14] Download Zeymal application files
 :: ------------------------------------------------------------
 echo [9/14] Downloading Zeymal application files...
 call :InstallJava
-call :stepPause
+echo.
 
 :: ------------------------------------------------------------
 :: [10/14] Deploy files into the Zeymal folder
@@ -161,35 +161,35 @@ if !errorlevel! neq 0 (
     echo   [WARN ] Deployment finished with warnings.
     call :ackWarn
 )
-call :stepPause
+echo.
 
 :: ------------------------------------------------------------
 :: [11/14] Configure SQL Server (TCP/IP, port 1433, service LogOn)
 :: ------------------------------------------------------------
 echo [11/14] Configuring SQL Server networking and service...
 call :ConfigureSqlServer
-call :stepPause
+echo.
 
 :: ------------------------------------------------------------
 :: [12/14] Enable IIS + FTP Windows features
 :: ------------------------------------------------------------
 echo [12/14] Enabling IIS + FTP features...
 call :EnableIisFeatures
-call :stepPause
+echo.
 
 :: ------------------------------------------------------------
 :: [13/14] Configure IIS virtual directory and FTP site
 :: ------------------------------------------------------------
 echo [13/14] Configuring IIS "RT" virtual directory and FTP site...
 call :ConfigureIisSites
-call :stepPause
+echo.
 
 :: ------------------------------------------------------------
 :: [14/14] Restore Ashley database
 :: ------------------------------------------------------------
 echo [14/14] Restoring Ashley database...
 call :RestoreAshleyDb
-call :stepPause
+echo.
 
 echo ============================================================
 echo   Setup complete
@@ -222,17 +222,6 @@ exit /b 0
 :ackWarn
 echo.
 echo   ^>^> A warning/error occurred above. Press any key to continue...
-pause >nul
-exit /b 0
-
-
-:: ============================================================
-:: :stepPause - pause after every step so the user can review
-:: output before the next step runs. NEVER auto-advance.
-:: ============================================================
-:stepPause
-echo.
-echo   -- Press any key to continue to the next step --
 pause >nul
 exit /b 0
 
@@ -426,6 +415,26 @@ echo   [ OK  ] SQL Server 2022 Express installed successfully.
 
 echo.
 echo   --- SQL Server Management Studio (SSMS) ---
+
+set "SsmsFound=0"
+
+reg query "HKLM\SOFTWARE\Microsoft\Microsoft SQL Server Management Studio" >nul 2>&1
+if !errorlevel! equ 0 set "SsmsFound=1"
+
+reg query "HKLM\SOFTWARE\WOW6432Node\Microsoft\Microsoft SQL Server Management Studio" >nul 2>&1
+if !errorlevel! equ 0 set "SsmsFound=1"
+
+for %%D in (18 19 20 21) do (
+    if exist "%ProgramFiles(x86)%\Microsoft SQL Server Management Studio %%D\Common7\IDE\Ssms.exe" set "SsmsFound=1"
+    if exist "%ProgramFiles%\Microsoft SQL Server Management Studio %%D\Common7\IDE\Ssms.exe"      set "SsmsFound=1"
+    if exist "%ProgramFiles%\Microsoft SQL Server Management Studio %%D\Release\Common7\IDE\Ssms.exe" set "SsmsFound=1"
+)
+
+if "!SsmsFound!"=="1" (
+    echo   [ OK  ] SSMS is already installed. Skipping download and install.
+    exit /b 0
+)
+
 set "SsmsInstaller=%DownloadPath%\SSMS-Setup-ENU.exe"
 call :Download "https://aka.ms/ssmsfullsetup" "%SsmsInstaller%" "SSMS"
 if !errorlevel! neq 0 (
@@ -509,6 +518,14 @@ set "ZeymalRplaceXip=%ZeymalBaseUrl%(Z_Replace_Base).zip"
 set "ZeymalIftwInstaller=%ZeymalBaseUrl%jre-8u271-windows-i586-iftw.zip"
 set "Zeymalexe=%ZeymalBaseUrl%Zeymal.zip"
 set "ZeymalResetxip=%ZeymalBaseUrl%Z_Reset_1034.zip"
+
+echo   Cleaning any existing Zeymal zip files for a fresh download...
+del /f /q "%ZeymalFiles%\(Z_Replace_Base).zip"            >nul 2>&1
+del /f /q "%ZeymalFiles%\jre-8u271-windows-i586-iftw.zip" >nul 2>&1
+del /f /q "%ZeymalFiles%\Zeymal.zip"                      >nul 2>&1
+del /f /q "%ZeymalFiles%\Z_Reset_1034.zip"                >nul 2>&1
+del /f /q "%ZeymalFiles%\*.extracted"                     >nul 2>&1
+echo   [ OK  ] Old zip files removed. Starting fresh downloads.
 
 call :DownloadZeymalItem "ZeymalRplaceXip"     "(Z_Replace_Base).zip"            1 4
 if !errorlevel! neq 0 exit /b 1
