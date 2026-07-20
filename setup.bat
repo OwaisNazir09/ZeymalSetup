@@ -133,22 +133,23 @@ if not errorlevel 1 (
 echo.
 
 :: ------------------------------------------------------------
-:: [8/14] Install Java Runtime Environment
+:: [8/14] Install Java Runtime Environment (from extracted zip)
 :: ------------------------------------------------------------
 echo [8/14] Installing Java Runtime Environment...
-call :InstallJava
-echo.
 
-:: ------------------------------------------------------------
-:: [9/14] Download Zeymal application files
-:: ------------------------------------------------------------
-echo [9/14] Downloading Zeymal application files...
 call :DownloadZeymalFiles
 if !errorlevel! neq 0 (
     set "failStep=9/14 download Zeymal application files"
     echo   [ERROR] One or more Zeymal files failed to download.
     goto :fatal
 )
+echo.
+
+:: ------------------------------------------------------------
+:: [9/14] Download Zeymal application files
+:: ------------------------------------------------------------
+echo [9/14] Downloading Zeymal application files...
+call :InstallJava
 echo.
 
 :: ------------------------------------------------------------
@@ -454,41 +455,6 @@ exit /b 0
 
 
 :: ============================================================
-:: Java JRE 8u271 (32-bit iftw web installer)
-:: Also disables auto-update.
-:: ============================================================
-:InstallJava
-echo   --- Java JRE 8u271 ---
-
-set "JavaInstaller=%DownloadPath%\jre-8u271-windows-i586-iftw.exe"
-set "JavaUrl=https://javadl.oracle.com/webapps/download/GetFile/1.8.0_271-b09/61ae65e088624f5aaa0b1d2d801741d9/windows-i586/jre-8u271-windows-i586-iftw.exe"
-
-if exist "%JavaInstaller%" (
-    echo   [ OK  ] Existing installer found. Skipping download.
-    echo           %JavaInstaller%
-) else (
-    call :Download "%JavaUrl%" "%JavaInstaller%" "Java JRE 8u271"
-    if !errorlevel! neq 0 (
-        echo   [WARN ] Failed to download Java JRE 8u271.
-        echo           Oracle now gates JRE 8 downloads. Place the file manually at:
-        echo             %JavaInstaller%
-        echo           Then re-run this script, or install Java by hand.
-        echo           Continuing with the rest of the setup...
-        exit /b 0
-    )
-)
-
-echo   Installing Java silently (auto-update disabled)...
-"%JavaInstaller%" /s AUTO_UPDATE=Disable STATIC=1 REBOOT=Disable EULA=Disable NOSTARTMENU=Enable WEB_ANALYTICS=Disable
-if !errorlevel! neq 0 (
-    echo   [WARN ] Java installation reported an error. You can install it manually if needed.
-    exit /b 0
-)
-echo   [ OK  ] Java JRE 8u271 installed successfully.
-exit /b 0
-
-
-:: ============================================================
 :: Download the Zeymal application files (with real filenames)
 :: ============================================================
 :DownloadZeymalFiles
@@ -506,28 +472,37 @@ if not exist "%ZeymalFiles%" (
     echo   [ OK  ] Already exists: %ZeymalFiles%
 )
 
-set "ZeymalRplaceXip=https://my.microsoftpersonalcontent.com/personal/1d15c3c5a76b8f6e/_layouts/15/download.aspx?UniqueId=b8e3d0ba-18d9-4feb-bbfd-6b71d09ea928&Translate=false&tempauth=v1e.eyJzaXRlaWQiOiJhNzRiMGExYi03ODhmLTRlNTktYTI0OC0xYTZkZTBkYTBkZWQiLCJhdWQiOiIwMDAwMDAwMy0wMDAwLTBmZjEtY2UwMC0wMDAwMDAwMDAwMDAvbXkubWljcm9zb2Z0cGVyc29uYWxjb250ZW50LmNvbUA5MTg4MDQwZC02YzY3LTRjNWItYjExMi0zNmEzMDRiNjZkYWQiLCJleHAiOiIxNzgzOTE5MjQzIn0.m7I2ZmTod3uMKcBc0mXi5KvZX4H3k5ikcyeDpdtZag0glDGpB-lEQ9u5zS0a1cPIXw7-i9miz_mqfnRXewntpPhj3w2ygWZhHu-UvGhYxK0uUwCYy4rmLW9Ark2YdFlKaEBspq34740L89f8I46pgLI8U4C40T5FYjDlHw3FnYSQiPRGSDsCT98H9AKOpSFLWHV1T6xZodwPNNzivoEMPWImdEhkVWOysV1dau2o47IpUxqa1MlBqmE09TxbisHCKy_r_VgW5Rojim_gzcJLQ95VImaWwae4FN1VAe1h2ywrYoecbnIehvkIsrMAsvSpEdMoCfm0dzHqDcStZprg1cfTnfTlatTxgZmvpDCCtfjf92vJyIlSGoLereB63nZLCemrWZiFZ7U0RRLTUWzd9rxU9F48D3lDmqI1n-aYPKa-zO7LtX_2BAmx8F1xfP9bT6QpPhdgPTe27JbQwQ_HulLbwIC2PFKMsBe6h-DHby-e9tlEViNCTYz4Mf9UgyyZajD5jZV7mBbqC4nRMs4vZI2q6hl_A-eFyA36HBUnmG3O8f2GhXxUG9dLla4gJZEquyRxMNO6LGOanW9CtB3l6qn8Br1gUXtMsho4DdSCSVk.PbWtsEDxyIC25Aez8vltFHaOPBDLeD6BSH_9X-ykRwc&ApiVersion=2.0"
+set "ZeymalBaseUrl=http://1rsrs.rationaltabs.com/zml_installer/"
 
-set "ZeymalIftwInstaller=https://my.microsoftpersonalcontent.com/personal/1d15c3c5a76b8f6e/_layouts/15/download.aspx?UniqueId=dc901bc0-8554-4038-b514-4b9216f322e4&Translate=false&tempauth=v1e.eyJzaXRlaWQiOiJhNzRiMGExYi03ODhmLTRlNTktYTI0OC0xYTZkZTBkYTBkZWQiLCJhdWQiOiIwMDAwMDAwMy0wMDAwLTBmZjEtY2UwMC0wMDAwMDAwMDAwMDAvbXkubWljcm9zb2Z0cGVyc29uYWxjb250ZW50LmNvbUA5MTg4MDQwZC02YzY3LTRjNWItYjExMi0zNmEzMDRiNjZkYWQiLCJleHAiOiIxNzgzOTE5Njc5In0.VzZ55tKZPFJXr4Lj9aNMhodOZkZx5OVTumKAC1Eksp0Ogy5S1DGwqOz4Bm0s3p7jABLff-jBVBiBz4hvkLD8r437ggCJ411cdQzCpBcs9HNPesGXUbZ4WKPwgQ6r3LYRdbSAr31F1oPq4Aw551OJTZhphcRQbWVkWmIR5wC1HiED-POlHoCWKAD6294RrwpL_aLdII2ccJgjkut6bSdHVRXQ6jgZJWnmTr6qAp4-o1lwpQomCWIn7MmHnp-mRULtF_8gep7k9rpCOk1pzNVyPT3XHgNJ_ryirz7Rr-Wz3t_PNLTAN4bPwrAHMB2GSUVizGErFsosD3lQl59T__Nt0UH-i8tSDE-mosVb0VtvuEdUKu4IbQhGlUoufSw0EwAagWdyFfeqAtZkz6UWUaI9ExKb9pIO-wv8lQYsNpodP2wo65RtCvCOl0866zCjdo5FD2_BD0WfrtZkPNUwIDvskz5pQrDEPzwtA8bX1mDb9V0DCgs6c4VZdrzmWPsj7bCXTyO16xSf1aSsJHUVA3QuRiyh3mGhu1r1T_tMJ1xzdBdlZdaDjO0hG6M3sI6lyZl2lbAybmlsXkr7sSx-Uz_cHWpuMbCqtNU3ZaEiZVZ_Ack.B6pNrnurOUDkxrggDZjkAtjdkrZINVBEjkKjUNoOBiU&ApiVersion=2.0"
-
-set "Zeymalexe=https://my.microsoftpersonalcontent.com/personal/1d15c3c5a76b8f6e/_layouts/15/download.aspx?UniqueId=c68c6fa3-6aa4-43b3-b4ff-e071ecf34daa&Translate=false&tempauth=v1e.eyJzaXRlaWQiOiJhNzRiMGExYi03ODhmLTRlNTktYTI0OC0xYTZkZTBkYTBkZWQiLCJhdWQiOiIwMDAwMDAwMy0wMDAwLTBmZjEtY2UwMC0wMDAwMDAwMDAwMDAvbXkubWljcm9zb2Z0cGVyc29uYWxjb250ZW50LmNvbUA5MTg4MDQwZC02YzY3LTRjNWItYjExMi0zNmEzMDRiNjZkYWQiLCJleHAiOiIxNzgzOTE5ODUxIn0.QU6Jlf3ddhc5PcHufu8dBHCn5a2ETV3YZFmV6N80xjGkqXJThoUU0rrm5VOR47TYQ36ngkfP9N2vPEDuJEj3s6_InByRO-TIRUQ8hord1vbhp_kAu8l9so9qs5C7XiWJ8UfpMRjhFBC6DMTtur1GrCEozZkBwYvRtGBlbzdTRGqkojIaYEr6ojg9UJyhd8aqGGuaS57_RQGiHVzZ0uefVk8rpAPsg3E3zWqzCAMhLVlOAi9emcGV4p4R9UXCiJ1ZnjetkH0l5RFZWShJ-3s0SY23LvPcNvWzQcrRlMBW9Tpisb9X7hCfayizGgsj4kC23WPwpQitkzL6T4hvlDqLk1UejliBHELBjtMSC82Rno37_aE-vHZy_LsHQdpSIdz6AY5r_ilX8GrYkDg5P9xP_X71Kbde25stIkITYMlsGBNGaFWBwh6hLT561kUFa-6O2z6rm_7UuxbQlPZKuksaBOEV_lukNudGmjjngPeherk1am_Hyb9RxNm4ITjXyeC1Hab6fnGomAxpX3AAV6oJEJh-9RbFemlkeJUlttoxRZwcNgZK4Klju3c75dR1vdypOY6arOyHub_Ukc5ZiOA4ezQzllsip9mldmpvcUj1xhLo1KBw0-cAGpwndEXpMsW0.S5qZPH7XkJrN_PoV6EWhIyzn6SJPhv2KkKEdfZoY3wc&ApiVersion=2.0"
-
-set "Zeymaljar=https://my.microsoftpersonalcontent.com/personal/1d15c3c5a76b8f6e/_layouts/15/download.aspx?UniqueId=82bbef8c-25f0-452d-8b75-1c56e8dcf547&Translate=false&tempauth=v1e.eyJzaXRlaWQiOiJhNzRiMGExYi03ODhmLTRlNTktYTI0OC0xYTZkZTBkYTBkZWQiLCJhdWQiOiIwMDAwMDAwMy0wMDAwLTBmZjEtY2UwMC0wMDAwMDAwMDAwMDAvbXkubWljcm9zb2Z0cGVyc29uYWxjb250ZW50LmNvbUA5MTg4MDQwZC02YzY3LTRjNWItYjExMi0zNmEzMDRiNjZkYWQiLCJleHAiOiIxNzgzOTIwMDMyIn0.YB5PYRYmw4LUu7kr4Za3hA0zQskt87Lotx3zJt4pSg39FoSziHd5A7PLwrfI4UqJXIPgn9s_tuTqtJY0YAPO0mhb5kBvbPCVbUPZYLYIWzE1TjF3D8PX8RFEHWNt9XWQvNAv7JFXS-9HdKT93W0WRGvlnLZvQMIKz4zOZ7t-4Uf8cIsDKMx8CajEKJtZYLfybpDvyNhJbk7YgOB58LD_8jBsN6NZtcPjrlA94aWiJ_hJbzeyPBWHN-jIEkcWSme58-l-18oZWy6cU4_9kMOTx6ZHuY2YG3rBbALXgS1SJZ_4cL4tzRvJfiuijjlCXt4nHwIcU6tkrq84tB_ZOmc9PRzmfbLd5KI9WTwfRatH0XEZqsFRaYU1FsutRlkma1-2Dl3tAEVFVdi7CiJdf_Mi168TyY4hPZGYA2lFtOpKbHX48DgOSuAMAnmIDss9OVgOVCCgWZnX42ahII26CXcNe_Pcepq0fO_1UvhcVJDjbnCTGrLEO2SrLIKkd6Gjycd7kY6w0CmGqFQ5uEVGIApWrS9NNzryo9GivKeYKeTkTwGvCUz81_bTylRyDB6EWUwmO22a4Xj81KnaTo8RUorgEP5QCca6Fb5sxhNpsMQ3hNk.uwpAooX1rADI06h3iZF80jYEG8CDmfNbV-QerfEM5Ms&ApiVersion=2.0"
-
-set "ZeymalResetxip=https://my.microsoftpersonalcontent.com/personal/1d15c3c5a76b8f6e/_layouts/15/download.aspx?UniqueId=087a7d24-c60b-4420-b48f-74477eb77454&Translate=false&tempauth=v1e.eyJzaXRlaWQiOiJhNzRiMGExYi03ODhmLTRlNTktYTI0OC0xYTZkZTBkYTBkZWQiLCJhdWQiOiIwMDAwMDAwMy0wMDAwLTBmZjEtY2UwMC0wMDAwMDAwMDAwMDAvbXkubWljcm9zb2Z0cGVyc29uYWxjb250ZW50LmNvbUA5MTg4MDQwZC02YzY3LTRjNWItYjExMi0zNmEzMDRiNjZkYWQiLCJleHAiOiIxNzgzOTIwMTY5In0.fHpi_7-QgzhUS8ZdNevoaKNCAU9daLH5d6L1ljyQrBG8IxXULP4r_NunbJYVQiccDGyJdNABmFplyb9qxkylntgn8YBDbBBowlUR5NXIctBcDmjthCmnSRTCXDsLIsVMWSm1nEh8Aj2_Dwl8G7T_quIQ_MjO9nscq_l-_fw633x5Ig1j07xe-OJlbSEtUBmP_oM8Te1HdXhFDujnrUM-kld1drTPO_QVqT1p3FO2fexZYW7PPmqTLSpyyXtaXiSN-7078AaZLGcpC_QW210rdwWHbpMuHFk_Kby0youDAvDYtX9oZW9iPeoa-BHEZs4OxVJ28Y7z2lxAM7cLeefHyiPRNpJtkpsgzyrW457VFOtg8WQWJwjMWHjFaLohkUgzETcQDt6yIqzqzFgsrIXVFLx5csjiK7wVAqVO5hIsWLdu_r-OdATZwMaSDKc5h7BdxhH7ai8ZUwcUBr-KenyeVpUpNQMzU_h8TutNHMYHI6mLWdp1nQPzc4cLrhgDwYQu6MiJx5mfEElKxMCD_wkB3WpL6rxVesY751nbnlpZl49dOypNu0GAvMq2xJJ25MZWzz0PyKPtsczj_R95OL5xTWUbU_bDKldH5BsdS94OE1o.GT2ruZ2FXmsuvc0ojYOKs43aYC-KvoYcSVo90P-DnNk&ApiVersion=2.0"
+set "ZeymalRplaceXip=%ZeymalBaseUrl%Z Replace Base.zip"
+set "ZeymalIftwInstaller=%ZeymalBaseUrl%jre-8u271-windows-i586-iftw.zip"
+set "Zeymalexe=%ZeymalBaseUrl%Zeymal.zip"
+set "Zeymaljar=%ZeymalBaseUrl%Fonts.zip"
+set "ZeymalResetxip=%ZeymalBaseUrl%Z_Reset_1034.zip"
 
 call :DownloadZeymalItem "ZeymalRplaceXip"     "Z Replace Base.zip"              1 5
 if !errorlevel! neq 0 exit /b 1
-call :DownloadZeymalItem "ZeymalIftwInstaller" "jre-8u271-windows-i586-iftw.exe" 2 5
+call :DownloadZeymalItem "ZeymalIftwInstaller" "jre-8u271-windows-i586-iftw.zip" 2 5
 if !errorlevel! neq 0 exit /b 1
-call :DownloadZeymalItem "Zeymalexe"           "Zeymal.exe"                      3 5
+call :DownloadZeymalItem "Zeymalexe"           "Zeymal.zip"                      3 5
 if !errorlevel! neq 0 exit /b 1
-call :DownloadZeymalItem "Zeymaljar"           "Zeymal.jar"                      4 5
+call :DownloadZeymalItem "Zeymaljar"           "Fonts.zip"                       4 5
 if !errorlevel! neq 0 exit /b 1
-call :DownloadZeymalItem "ZeymalResetxip"      "Z_Reset.zip"                     5 5
+call :DownloadZeymalItem "ZeymalResetxip"      "Z_Reset_1034.zip"                5 5
 if !errorlevel! neq 0 exit /b 1
 
 echo   [ OK  ] All Zeymal files downloaded successfully.
+echo.
+echo   Extracting all zip files...
+
+call :UnzipZeymalFiles
+
+if !errorlevel! neq 0 (
+    echo   [ERROR] Failed to extract some files.
+    exit /b 1
+)
+
+echo   [ OK  ] All files extracted and zip files removed.
 exit /b 0
 
 
@@ -558,6 +533,168 @@ if !errorlevel! neq 0 (
 )
 echo     [ OK  ] Saved to: !fileDest!
 exit /b 0
+
+
+:UnzipZeymalFiles
+set "unzipFailed=0"
+
+echo.
+echo   [1/5] Extracting Z Replace Base.zip...
+if exist "%ZeymalFiles%\Z Replace Base.zip" (
+    powershell -command "Expand-Archive -Path '%ZeymalFiles%\Z Replace Base.zip' -DestinationPath '%ZeymalFiles%' -Force"
+    if !errorlevel! neq 0 (
+        echo     [ERROR] Failed to extract Z Replace Base.zip
+        set "unzipFailed=1"
+    ) else (
+        echo     [ OK  ] Extracted Z Replace Base.zip
+        echo     Deleting zip file...
+        del /q "%ZeymalFiles%\Z Replace Base.zip" >nul 2>&1
+        if !errorlevel! neq 0 (
+            echo     [WARN] Could not delete Z Replace Base.zip
+        ) else (
+            echo     [ OK  ] Removed Z Replace Base.zip
+        )
+    )
+) else (
+    echo     [WARN] Z Replace Base.zip not found
+)
+
+echo.
+echo   [2/5] Extracting jre-8u271-windows-i586-iftw.zip...
+if exist "%ZeymalFiles%\jre-8u271-windows-i586-iftw.zip" (
+    powershell -command "Expand-Archive -Path '%ZeymalFiles%\jre-8u271-windows-i586-iftw.zip' -DestinationPath '%ZeymalFiles%' -Force"
+    if !errorlevel! neq 0 (
+        echo     [ERROR] Failed to extract jre-8u271-windows-i586-iftw.zip
+        set "unzipFailed=1"
+    ) else (
+        echo     [ OK  ] Extracted jre-8u271-windows-i586-iftw.zip
+        echo     Deleting zip file...
+        del /q "%ZeymalFiles%\jre-8u271-windows-i586-iftw.zip" >nul 2>&1
+        if !errorlevel! neq 0 (
+            echo     [WARN] Could not delete jre-8u271-windows-i586-iftw.zip
+        ) else (
+            echo     [ OK  ] Removed jre-8u271-windows-i586-iftw.zip
+        )
+    )
+) else (
+    echo     [WARN] jre-8u271-windows-i586-iftw.zip not found
+)
+
+echo.
+echo   [3/5] Extracting Zeymal.zip...
+if exist "%ZeymalFiles%\Zeymal.zip" (
+    powershell -command "Expand-Archive -Path '%ZeymalFiles%\Zeymal.zip' -DestinationPath '%ZeymalFiles%' -Force"
+    if !errorlevel! neq 0 (
+        echo     [ERROR] Failed to extract Zeymal.zip
+        set "unzipFailed=1"
+    ) else (
+        echo     [ OK  ] Extracted Zeymal.zip
+        echo     Deleting zip file...
+        del /q "%ZeymalFiles%\Zeymal.zip" >nul 2>&1
+        if !errorlevel! neq 0 (
+            echo     [WARN] Could not delete Zeymal.zip
+        ) else (
+            echo     [ OK  ] Removed Zeymal.zip
+        )
+    )
+) else (
+    echo     [WARN] Zeymal.zip not found
+)
+
+echo.
+echo   [4/5] Extracting Fonts.zip...
+if exist "%ZeymalFiles%\Fonts.zip" (
+    powershell -command "Expand-Archive -Path '%ZeymalFiles%\Fonts.zip' -DestinationPath '%ZeymalFiles%' -Force"
+    if !errorlevel! neq 0 (
+        echo     [ERROR] Failed to extract Fonts.zip
+        set "unzipFailed=1"
+    ) else (
+        echo     [ OK  ] Extracted Fonts.zip
+        echo     Deleting zip file...
+        del /q "%ZeymalFiles%\Fonts.zip" >nul 2>&1
+        if !errorlevel! neq 0 (
+            echo     [WARN] Could not delete Fonts.zip
+        ) else (
+            echo     [ OK  ] Removed Fonts.zip
+        )
+    )
+) else (
+    echo     [WARN] Fonts.zip not found
+)
+
+echo.
+echo   [5/5] Extracting Z_Reset_1034.zip...
+if exist "%ZeymalFiles%\Z_Reset_1034.zip" (
+    powershell -command "Expand-Archive -Path '%ZeymalFiles%\Z_Reset_1034.zip' -DestinationPath '%ZeymalFiles%' -Force"
+    if !errorlevel! neq 0 (
+        echo     [ERROR] Failed to extract Z_Reset_1034.zip
+        set "unzipFailed=1"
+    ) else (
+        echo     [ OK  ] Extracted Z_Reset_1034.zip
+        echo     Deleting zip file...
+        del /q "%ZeymalFiles%\Z_Reset_1034.zip" >nul 2>&1
+        if !errorlevel! neq 0 (
+            echo     [WARN] Could not delete Z_Reset_1034.zip
+        ) else (
+            echo     [ OK  ] Removed Z_Reset_1034.zip
+        )
+    )
+) else (
+    echo     [WARN] Z_Reset_1034.zip not found
+)
+
+if !unzipFailed! neq 0 (
+    exit /b 1
+)
+exit /b 0
+
+
+
+:: ============================================================
+:: Java JRE 8u271 (from extracted zip file)
+:: ============================================================
+:InstallJava
+echo   --- Java JRE 8u271 ---
+
+set "JavaZip=%ZeymalFiles%\jre-8u271-windows-i586-iftw.zip"
+set "JavaExtractDir=%ZeymalFiles%\jre_extract"
+set "JavaInstaller=%JavaExtractDir%\jre-8u271-windows-i586-iftw.exe"
+
+if exist "%JavaInstaller%" (
+    echo   [ OK  ] Java installer already extracted.
+) else if exist "%JavaZip%" (
+    echo   Extracting Java installer from zip...
+    if not exist "%JavaExtractDir%" mkdir "%JavaExtractDir%"
+    powershell -NoProfile -Command "try { Expand-Archive -Path '%JavaZip%' -DestinationPath '%JavaExtractDir%' -Force } catch { exit 1 }"
+    if !errorlevel! neq 0 (
+        echo   [ERROR] Failed to extract Java installer zip.
+        echo   [WARN ] You may need to manually extract and install Java.
+        exit /b 0
+    )
+    echo   [ OK  ] Java installer extracted.
+) else (
+    echo   [WARN ] Java zip file not found at: %JavaZip%
+    echo   [WARN ] Java was not downloaded or extracted properly.
+    echo   [WARN ] You may need to manually install Java.
+    exit /b 0
+)
+
+if not exist "%JavaInstaller%" (
+    echo   [WARN ] Java installer executable not found at: %JavaInstaller%
+    echo   [WARN ] You may need to manually install Java.
+    exit /b 0
+)
+
+echo   Installing Java silently (auto-update disabled)...
+"%JavaInstaller%" /s AUTO_UPDATE=Disable STATIC=1 REBOOT=Disable EULA=Disable NOSTARTMENU=Enable WEB_ANALYTICS=Disable
+if !errorlevel! neq 0 (
+    echo   [WARN ] Java installation reported an error. You can install it manually if needed.
+    exit /b 0
+)
+echo   [ OK  ] Java JRE 8u271 installed successfully.
+exit /b 0
+
+
 
 
 :: ============================================================
@@ -702,11 +839,11 @@ exit /b 0
 :: Restore the Ashley database from Z_Reset*.zip
 :: ============================================================
 :RestoreAshleyDb
-set "resetZip=%appFolder%\files\Z_Reset.zip"
+set "resetZip=%appFolder%\files\Z_Reset_1034.zip"
 set "restoreDir=%appFolder%\files\ashley_restore"
 
 if not exist "%resetZip%" (
-    echo   [SKIP ] Z_Reset.zip not found; skipping DB restore.
+    echo   [SKIP ] Z_Reset_1034.zip not found; skipping DB restore.
     exit /b 0
 )
 
@@ -716,11 +853,11 @@ if !errorlevel! neq 0 (
     exit /b 0
 )
 
-echo   Extracting Z_Reset.zip ...
+echo   Extracting Z_Reset_1034.zip ...
 if not exist "%restoreDir%" mkdir "%restoreDir%"
 powershell -NoProfile -Command "try { Expand-Archive -Path '%resetZip%' -DestinationPath '%restoreDir%' -Force } catch { exit 1 }"
 if !errorlevel! neq 0 (
-    echo   [ERROR] Failed to extract Z_Reset.zip.
+    echo   [ERROR] Failed to extract Z_Reset_1034.zip.
     exit /b 1
 )
 
@@ -729,7 +866,7 @@ for /f "delims=" %%F in ('dir /b /s "%restoreDir%\*.bak" 2^>nul') do (
     if not defined bakFile set "bakFile=%%F"
 )
 if not defined bakFile (
-    echo   [ERROR] No .bak file found inside Z_Reset.zip.
+    echo   [ERROR] No .bak file found inside Z_Reset_1034.zip.
     exit /b 1
 )
 echo   Backup file: !bakFile!
