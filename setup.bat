@@ -398,26 +398,6 @@ echo   [ OK  ] SQL Server 2022 Express installed successfully.
 
 echo.
 echo   --- SQL Server Management Studio (SSMS) ---
-
-set "SsmsFound=0"
-
-reg query "HKLM\SOFTWARE\Microsoft\Microsoft SQL Server Management Studio" /s >nul 2>&1
-if !errorlevel! equ 0 set "SsmsFound=1"
-
-reg query "HKLM\SOFTWARE\WOW6432Node\Microsoft\Microsoft SQL Server Management Studio" /s >nul 2>&1
-if !errorlevel! equ 0 set "SsmsFound=1"
-
-for %%D in (18 19 20 21) do (
-    if exist "%ProgramFiles(x86)%\Microsoft SQL Server Management Studio %%D\Common7\IDE\Ssms.exe" set "SsmsFound=1"
-    if exist "%ProgramFiles%\Microsoft SQL Server Management Studio %%D\Common7\IDE\Ssms.exe"      set "SsmsFound=1"
-    if exist "%ProgramFiles%\Microsoft SQL Server Management Studio %%D\Release\Common7\IDE\Ssms.exe" set "SsmsFound=1"
-)
-
-if "!SsmsFound!"=="1" (
-    echo   [ OK  ] SSMS is already installed. Skipping.
-    exit /b 0
-)
-
 set "SsmsInstaller=%DownloadPath%\SSMS-Setup-ENU.exe"
 call :Download "https://aka.ms/ssmsfullsetup" "%SsmsInstaller%" "SSMS"
 if !errorlevel! neq 0 (
