@@ -253,11 +253,14 @@ if defined failStep (
 )
 echo.
 echo   Scroll up to read the error above.
-echo   This window will stay open until you press a key.
+echo   THIS WINDOW WILL NOT CLOSE. Close it manually (X button)
+echo   when you are done reading the errors.
 echo ============================================================
 echo.
+:fatal_wait
 pause >nul
-exit /b 1
+echo   Still here. Close this window manually when you are done.
+goto :fatal_wait
 
 
 :: ============================================================
