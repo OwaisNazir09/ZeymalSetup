@@ -398,6 +398,14 @@ echo   [ OK  ] SQL Server 2022 Express installed successfully.
 
 echo.
 echo   --- SQL Server Management Studio (SSMS) ---
+
+for /f "delims=" %%A in ('powershell -NoProfile -Command "$paths = @('HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server Management Studio','HKLM:\SOFTWARE\WOW6432Node\Microsoft\Microsoft SQL Server Management Studio'); $found = $false; foreach ($p in $paths) { if (Test-Path $p) { $subs = Get-ChildItem $p -ErrorAction SilentlyContinue; if ($subs) { $found = $true; break } } }; if (-not $found) { $ssms = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*','HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue ^| Where-Object { $_.DisplayName -like 'SSMS*' -or $_.DisplayName -like 'SQL Server Management Studio*' } ^| Select-Object -First 1; if ($ssms) { $found = $true } }; if ($found) { 'INSTALLED' } else { 'MISSING' }"') do set "SsmsStatus=%%A"
+
+if /I "!SsmsStatus!"=="INSTALLED" (
+    echo   [ OK  ] SSMS is already installed. Skipping.
+    exit /b 0
+)
+
 set "SsmsInstaller=%DownloadPath%\SSMS-Setup-ENU.exe"
 call :Download "https://aka.ms/ssmsfullsetup" "%SsmsInstaller%" "SSMS"
 if !errorlevel! neq 0 (
@@ -472,16 +480,16 @@ if not exist "%ZeymalFiles%" (
     echo   [ OK  ] Already exists: %ZeymalFiles%
 )
 
-set "ZeymalBaseUrl=http://1rsrs.rationaltabs.com/zml_installer/"
+set "ZeymalBaseUrl=https://zml-installer.blr1.digitaloceanspaces.com/"
 
 
-set "ZeymalRplaceXip=%ZeymalBaseUrl%(Z Replace Base).zip"
+set "ZeymalRplaceXip=%ZeymalBaseUrl%(Z_Replace_Base).zip"
 set "ZeymalIftwInstaller=%ZeymalBaseUrl%jre-8u271-windows-i586-iftw.zip"
 set "Zeymalexe=%ZeymalBaseUrl%Zeymal.zip"
 set "Zeymaljar=%ZeymalBaseUrl%Fonts.zip"
 set "ZeymalResetxip=%ZeymalBaseUrl%Z_Reset_1034.zip"
 
-call :DownloadZeymalItem "ZeymalRplaceXip"     "Z Replace Base.zip"              1 5
+call :DownloadZeymalItem "ZeymalRplaceXip"     "(Z_Replace_Base).zip"            1 5
 if !errorlevel! neq 0 exit /b 1
 call :DownloadZeymalItem "ZeymalIftwInstaller" "jre-8u271-windows-i586-iftw.zip" 2 5
 if !errorlevel! neq 0 exit /b 1
@@ -540,24 +548,24 @@ exit /b 0
 set "unzipFailed=0"
 
 echo.
-echo   [1/5] Extracting Z Replace Base.zip...
-if exist "%ZeymalFiles%\Z Replace Base.zip" (
-    powershell -command "Expand-Archive -Path '%ZeymalFiles%\Z Replace Base.zip' -DestinationPath '%ZeymalFiles%' -Force"
+echo   [1/5] Extracting (Z_Replace_Base).zip...
+if exist "%ZeymalFiles%\(Z_Replace_Base).zip" (
+    powershell -command "Expand-Archive -Path '%ZeymalFiles%\(Z_Replace_Base).zip' -DestinationPath '%ZeymalFiles%' -Force"
     if !errorlevel! neq 0 (
-        echo     [ERROR] Failed to extract Z Replace Base.zip
+        echo     [ERROR] Failed to extract (Z_Replace_Base).zip
         set "unzipFailed=1"
     ) else (
-        echo     [ OK  ] Extracted Z Replace Base.zip
+        echo     [ OK  ] Extracted (Z_Replace_Base).zip
         echo     Deleting zip file...
-        del /q "%ZeymalFiles%\Z Replace Base.zip" >nul 2>&1
+        del /q "%ZeymalFiles%\(Z_Replace_Base).zip" >nul 2>&1
         if !errorlevel! neq 0 (
-            echo     [WARN] Could not delete Z Replace Base.zip
+            echo     [WARN] Could not delete (Z_Replace_Base).zip
         ) else (
-            echo     [ OK  ] Removed Z Replace Base.zip
+            echo     [ OK  ] Removed (Z_Replace_Base).zip
         )
     )
 ) else (
-    echo     [WARN] Z Replace Base.zip not found
+    echo     [WARN] (Z_Replace_Base).zip not found
 )
 
 echo.
@@ -699,23 +707,23 @@ exit /b 0
 
 
 :: ============================================================
-:: Deploy Zeymal files: extract Z Replace Base.zip into the app
+:: Deploy Zeymal files: extract (Z_Replace_Base).zip into the app
 :: folder and copy Zeymal.jar / .exe / jre alongside.
 :: ============================================================
 :DeployZeymalFiles
 set "ZeymalFiles=%appFolder%\files"
 
-set "zRepZip=%ZeymalFiles%\Z Replace Base.zip"
+set "zRepZip=%ZeymalFiles%\(Z_Replace_Base).zip"
 if exist "%zRepZip%" (
-    echo   Extracting "Z Replace Base.zip" into %appFolder% ...
+    echo   Extracting "(Z_Replace_Base).zip" into %appFolder% ...
     powershell -NoProfile -Command "try { Expand-Archive -Path '%zRepZip%' -DestinationPath '%appFolder%' -Force } catch { exit 1 }"
     if !errorlevel! neq 0 (
-        echo   [WARN ] Failed to extract "Z Replace Base.zip".
+        echo   [WARN ] Failed to extract "(Z_Replace_Base).zip".
     ) else (
         echo   [ OK  ] Extracted.
     )
 ) else (
-    echo   [WARN ] "Z Replace Base.zip" not found in %ZeymalFiles%.
+    echo   [WARN ] "(Z_Replace_Base).zip" not found in %ZeymalFiles%.
 )
 
 call :CopyIfPresent "%ZeymalFiles%\Zeymal.jar"                      "%appFolder%\Zeymal.jar"
