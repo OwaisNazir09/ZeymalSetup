@@ -486,18 +486,15 @@ set "ZeymalBaseUrl=https://zml-installer.blr1.digitaloceanspaces.com/"
 set "ZeymalRplaceXip=%ZeymalBaseUrl%(Z_Replace_Base).zip"
 set "ZeymalIftwInstaller=%ZeymalBaseUrl%jre-8u271-windows-i586-iftw.zip"
 set "Zeymalexe=%ZeymalBaseUrl%Zeymal.zip"
-set "Zeymaljar=%ZeymalBaseUrl%Fonts.zip"
 set "ZeymalResetxip=%ZeymalBaseUrl%Z_Reset_1034.zip"
 
-call :DownloadZeymalItem "ZeymalRplaceXip"     "(Z_Replace_Base).zip"            1 5
+call :DownloadZeymalItem "ZeymalRplaceXip"     "(Z_Replace_Base).zip"            1 4
 if !errorlevel! neq 0 exit /b 1
-call :DownloadZeymalItem "ZeymalIftwInstaller" "jre-8u271-windows-i586-iftw.zip" 2 5
+call :DownloadZeymalItem "ZeymalIftwInstaller" "jre-8u271-windows-i586-iftw.zip" 2 4
 if !errorlevel! neq 0 exit /b 1
-call :DownloadZeymalItem "Zeymalexe"           "Zeymal.zip"                      3 5
+call :DownloadZeymalItem "Zeymalexe"           "Zeymal.zip"                      3 4
 if !errorlevel! neq 0 exit /b 1
-call :DownloadZeymalItem "Zeymaljar"           "Fonts.zip"                       4 5
-if !errorlevel! neq 0 exit /b 1
-call :DownloadZeymalItem "ZeymalResetxip"      "Z_Reset_1034.zip"                5 5
+call :DownloadZeymalItem "ZeymalResetxip"      "Z_Reset_1034.zip"                4 4
 if !errorlevel! neq 0 exit /b 1
 
 echo   [ OK  ] All Zeymal files downloaded successfully.
@@ -548,7 +545,7 @@ exit /b 0
 set "unzipFailed=0"
 
 echo.
-echo   [1/5] Extracting (Z_Replace_Base).zip...
+echo   [1/4] Extracting (Z_Replace_Base).zip...
 if exist "%ZeymalFiles%\(Z_Replace_Base).zip" (
     powershell -command "Expand-Archive -Path '%ZeymalFiles%\(Z_Replace_Base).zip' -DestinationPath '%ZeymalFiles%' -Force"
     if !errorlevel! neq 0 (
@@ -569,7 +566,7 @@ if exist "%ZeymalFiles%\(Z_Replace_Base).zip" (
 )
 
 echo.
-echo   [2/5] Extracting jre-8u271-windows-i586-iftw.zip...
+echo   [2/4] Extracting jre-8u271-windows-i586-iftw.zip...
 if exist "%ZeymalFiles%\jre-8u271-windows-i586-iftw.zip" (
     powershell -command "Expand-Archive -Path '%ZeymalFiles%\jre-8u271-windows-i586-iftw.zip' -DestinationPath '%ZeymalFiles%' -Force"
     if !errorlevel! neq 0 (
@@ -590,7 +587,7 @@ if exist "%ZeymalFiles%\jre-8u271-windows-i586-iftw.zip" (
 )
 
 echo.
-echo   [3/5] Extracting Zeymal.zip...
+echo   [3/4] Extracting Zeymal.zip...
 if exist "%ZeymalFiles%\Zeymal.zip" (
     powershell -command "Expand-Archive -Path '%ZeymalFiles%\Zeymal.zip' -DestinationPath '%ZeymalFiles%' -Force"
     if !errorlevel! neq 0 (
@@ -611,28 +608,7 @@ if exist "%ZeymalFiles%\Zeymal.zip" (
 )
 
 echo.
-echo   [4/5] Extracting Fonts.zip...
-if exist "%ZeymalFiles%\Fonts.zip" (
-    powershell -command "Expand-Archive -Path '%ZeymalFiles%\Fonts.zip' -DestinationPath '%ZeymalFiles%' -Force"
-    if !errorlevel! neq 0 (
-        echo     [ERROR] Failed to extract Fonts.zip
-        set "unzipFailed=1"
-    ) else (
-        echo     [ OK  ] Extracted Fonts.zip
-        echo     Deleting zip file...
-        del /q "%ZeymalFiles%\Fonts.zip" >nul 2>&1
-        if !errorlevel! neq 0 (
-            echo     [WARN] Could not delete Fonts.zip
-        ) else (
-            echo     [ OK  ] Removed Fonts.zip
-        )
-    )
-) else (
-    echo     [WARN] Fonts.zip not found
-)
-
-echo.
-echo   [5/5] Extracting Z_Reset_1034.zip...
+echo   [4/4] Extracting Z_Reset_1034.zip...
 if exist "%ZeymalFiles%\Z_Reset_1034.zip" (
     powershell -command "Expand-Archive -Path '%ZeymalFiles%\Z_Reset_1034.zip' -DestinationPath '%ZeymalFiles%' -Force"
     if !errorlevel! neq 0 (
