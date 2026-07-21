@@ -85,118 +85,118 @@ call :EnsureUser "%rtUser%" "%rtPassword%" "1"
 if !errorlevel! neq 0 ( set "failStep=4/14 create RT user" & goto :fatal )
 echo.
 
-:: ------------------------------------------------------------
-:: [5/14] Create the application folder
-:: ------------------------------------------------------------
-echo [5/14] Preparing application folder...
-set "appFolder=C:\Users\%newUser%\zeymal"
-if not exist "%appFolder%" (
-    mkdir "%appFolder%"
-    if !errorlevel! neq 0 (
-        set "failStep=5/14 create application folder"
-        echo   [ERROR] Failed to create application folder.
-        echo           Path: %appFolder%
-        goto :fatal
-    )
-    echo   [ OK  ] Created: %appFolder%
-) else (
-    echo   [ OK  ] Already exists: %appFolder%
-)
-echo   [NOTE ] The manual suggests using a non-C drive if available.
-echo.
+@REM :: ------------------------------------------------------------
+@REM :: [5/14] Create the application folder
+@REM :: ------------------------------------------------------------
+@REM echo [5/14] Preparing application folder...
+@REM set "appFolder=C:\Users\%newUser%\zeymal"
+@REM if not exist "%appFolder%" (
+@REM     mkdir "%appFolder%"
+@REM     if !errorlevel! neq 0 (
+@REM         set "failStep=5/14 create application folder"
+@REM         echo   [ERROR] Failed to create application folder.
+@REM         echo           Path: %appFolder%
+@REM         goto :fatal
+@REM     )
+@REM     echo   [ OK  ] Created: %appFolder%
+@REM ) else (
+@REM     echo   [ OK  ] Already exists: %appFolder%
+@REM )
+@REM echo   [NOTE ] The manual suggests using a non-C drive if available.
+@REM echo.
 
-:: ------------------------------------------------------------
-:: [6/14] Create the Downloads folder
-:: ------------------------------------------------------------
-echo [6/14] Preparing Downloads folder...
-set "DownloadPath=C:\Users\%newUser%\Downloads"
-if not exist "%DownloadPath%" (
-    mkdir "%DownloadPath%"
-    if !errorlevel! neq 0 (
-        set "failStep=6/14 create Downloads folder"
-        echo   [ERROR] Failed to create Downloads folder.
-        echo           Path: %DownloadPath%
-        goto :fatal
-    )
-    echo   [ OK  ] Created: %DownloadPath%
-) else (
-    echo   [ OK  ] Already exists: %DownloadPath%
-)
-echo.
+@REM :: ------------------------------------------------------------
+@REM :: [6/14] Create the Downloads folder
+@REM :: ------------------------------------------------------------
+@REM echo [6/14] Preparing Downloads folder...
+@REM set "DownloadPath=C:\Users\%newUser%\Downloads"
+@REM if not exist "%DownloadPath%" (
+@REM     mkdir "%DownloadPath%"
+@REM     if !errorlevel! neq 0 (
+@REM         set "failStep=6/14 create Downloads folder"
+@REM         echo   [ERROR] Failed to create Downloads folder.
+@REM         echo           Path: %DownloadPath%
+@REM         goto :fatal
+@REM     )
+@REM     echo   [ OK  ] Created: %DownloadPath%
+@REM ) else (
+@REM     echo   [ OK  ] Already exists: %DownloadPath%
+@REM )
+@REM echo.
 
-:: ------------------------------------------------------------
-:: [7/14] Install SQL Server (edition depends on Windows version)
-:: ------------------------------------------------------------
-echo [7/14] Installing SQL Server...
-echo %windowsName% | findstr /I /C:"Windows 11" /C:"Windows 10" >nul
-if not errorlevel 1 (
-    call :InstallSqlModern
-    if !errorlevel! neq 0 ( set "failStep=7/14 SQL Server 2022 install" & goto :fatal )
-) else (
-    echo %windowsName% | findstr /I /C:"Windows 7" /C:"Windows 8" >nul
-    if not errorlevel 1 (
-        call :InstallSqlLegacy
-        if !errorlevel! neq 0 ( set "failStep=7/14 SQL Server 2014 install" & goto :fatal )
-    ) else (
-        set "failStep=7/14 SQL Server install (unsupported Windows)"
-        echo   [ERROR] Unsupported Windows version for SQL Server install.
-        goto :fatal
-    )
-)
-echo.
+@REM :: ------------------------------------------------------------
+@REM :: [7/14] Install SQL Server (edition depends on Windows version)
+@REM :: ------------------------------------------------------------
+@REM echo [7/14] Installing SQL Server...
+@REM echo %windowsName% | findstr /I /C:"Windows 11" /C:"Windows 10" >nul
+@REM if not errorlevel 1 (
+@REM     call :InstallSqlModern
+@REM     if !errorlevel! neq 0 ( set "failStep=7/14 SQL Server 2022 install" & goto :fatal )
+@REM ) else (
+@REM     echo %windowsName% | findstr /I /C:"Windows 7" /C:"Windows 8" >nul
+@REM     if not errorlevel 1 (
+@REM         call :InstallSqlLegacy
+@REM         if !errorlevel! neq 0 ( set "failStep=7/14 SQL Server 2014 install" & goto :fatal )
+@REM     ) else (
+@REM         set "failStep=7/14 SQL Server install (unsupported Windows)"
+@REM         echo   [ERROR] Unsupported Windows version for SQL Server install.
+@REM         goto :fatal
+@REM     )
+@REM )
+@REM echo.
 
-:: ------------------------------------------------------------
-:: [8/14] Download Zeymal application files
-:: ------------------------------------------------------------
-echo [8/14] Downloading Zeymal application files...
-call :DownloadZeymalFiles
-if !errorlevel! neq 0 (
-    echo   [WARN ] Zeymal file download had issues.
-    echo           You can complete this manually:
-    echo             Source URL : %ZeymalBaseUrl%
-    echo             Target dir : %appFolder%\files
-    echo           Continuing so the rest of the setup can run.
-    call :ackWarn
-)
-echo.
+@REM :: ------------------------------------------------------------
+@REM :: [8/14] Download Zeymal application files
+@REM :: ------------------------------------------------------------
+@REM echo [8/14] Downloading Zeymal application files...
+@REM call :DownloadZeymalFiles
+@REM if !errorlevel! neq 0 (
+@REM     echo   [WARN ] Zeymal file download had issues.
+@REM     echo           You can complete this manually:
+@REM     echo             Source URL : %ZeymalBaseUrl%
+@REM     echo             Target dir : %appFolder%\files
+@REM     echo           Continuing so the rest of the setup can run.
+@REM     call :ackWarn
+@REM )
+@REM echo.
 
-:: ------------------------------------------------------------
-:: [9/14] Install Java Runtime Environment 8u271
-:: ------------------------------------------------------------
-echo [9/14] Installing Java Runtime Environment 8u271...
-call :InstallJava
-if !errorlevel! neq 0 (
-    echo   [WARN ] Java installation reported an error or was skipped.
-    echo           You can install Java manually from:
-    echo             %appFolder%\files\jre-8u271-windows-i586-iftw.exe
-    echo           Continuing with the rest of the setup...
-    call :ackWarn
-)
-echo.
-:: ------------------------------------------------------------
-:: [10/14] Deploy files into the Zeymal folder
-:: ------------------------------------------------------------
-echo [10/14] Deploying files into %appFolder%...
-call :DeployZeymalFiles
-if !errorlevel! neq 0 (
-    echo   [WARN ] Deployment finished with warnings.
-    call :ackWarn
-)
-echo.
+@REM :: ------------------------------------------------------------
+@REM :: [9/14] Install Java Runtime Environment 8u271
+@REM :: ------------------------------------------------------------
+@REM echo [9/14] Installing Java Runtime Environment 8u271...
+@REM call :InstallJava
+@REM if !errorlevel! neq 0 (
+@REM     echo   [WARN ] Java installation reported an error or was skipped.
+@REM     echo           You can install Java manually from:
+@REM     echo             %appFolder%\files\jre-8u271-windows-i586-iftw.exe
+@REM     echo           Continuing with the rest of the setup...
+@REM     call :ackWarn
+@REM )
+@REM echo.
+@REM :: ------------------------------------------------------------
+@REM :: [10/14] Deploy files into the Zeymal folder
+@REM :: ------------------------------------------------------------
+@REM echo [10/14] Deploying files into %appFolder%...
+@REM call :DeployZeymalFiles
+@REM if !errorlevel! neq 0 (
+@REM     echo   [WARN ] Deployment finished with warnings.
+@REM     call :ackWarn
+@REM )
+@REM echo.
 
-:: ------------------------------------------------------------
-:: [11/14] Configure SQL Server (TCP/IP, port 1433, service LogOn)
-:: ------------------------------------------------------------
-echo [11/14] Configuring SQL Server networking and service...
-call :ConfigureSqlServer
-echo.
+@REM :: ------------------------------------------------------------
+@REM :: [11/14] Configure SQL Server (TCP/IP, port 1433, service LogOn)
+@REM :: ------------------------------------------------------------
+@REM echo [11/14] Configuring SQL Server networking and service...
+@REM call :ConfigureSqlServer
+@REM echo.
 
-:: ------------------------------------------------------------
-:: [12/14] Enable IIS + FTP Windows features
-:: ------------------------------------------------------------
-echo [12/14] Enabling IIS + FTP features...
-call :EnableIisFeatures
-echo.
+@REM :: ------------------------------------------------------------
+@REM :: [12/14] Enable IIS + FTP Windows features
+@REM :: ------------------------------------------------------------
+@REM echo [12/14] Enabling IIS + FTP features...
+@REM call :EnableIisFeatures
+@REM echo.
 
 :: ------------------------------------------------------------
 :: [13/14] Configure IIS virtual directory and FTP site
@@ -982,15 +982,17 @@ echo   Backup file: !bakFile!
 
 where sqlcmd >nul 2>&1
 if !errorlevel! neq 0 (
-    echo   [SKIP ] sqlcmd not found on PATH. Install SSMS/mssql-tools, then run:
-    echo           sqlcmd -S .\SQLEXPRESS -U sa -P %newPassword% -C ^-Q ^"RESTORE DATABASE Ashley FROM DISK='!bakFile!' WITH REPLACE^"
+    echo   [SKIP ] sqlcmd not found on PATH. Install SSMS/mssql-tools, then restore manually
+    echo           using SSMS ^(Restore Database ^> Options ^> Relocate files^) or via sqlcmd
+    echo           with WITH MOVE to your server's default DATA folder ^(the .bak was created
+    echo           on a different install path, so a straight RESTORE will fail with error 3156^).
     exit /b 0
 )
 
-echo   Restoring "Ashley" via sqlcmd ...
-sqlcmd -S .\SQLEXPRESS -U sa -P "%newPassword%" -C -Q "RESTORE DATABASE [Ashley] FROM DISK=N'!bakFile!' WITH REPLACE, NOUNLOAD, STATS=10"
+echo   Restoring "Ashley" via sqlcmd ^(with WITH MOVE to this server's default data folder^)...
+sqlcmd -S .\SQLEXPRESS -U sa -P "%newPassword%" -C -b -Q "SET NOCOUNT ON; DECLARE @dataPath NVARCHAR(500)=ISNULL(CAST(SERVERPROPERTY('InstanceDefaultDataPath') AS NVARCHAR(500)),N'C:\'); DECLARE @logPath NVARCHAR(500)=ISNULL(CAST(SERVERPROPERTY('InstanceDefaultLogPath') AS NVARCHAR(500)),@dataPath); DECLARE @mdf NVARCHAR(500)=@dataPath+N'Ashley.mdf'; DECLARE @ldf NVARCHAR(500)=@logPath+N'Ashley_log.ldf'; RESTORE DATABASE [Ashley] FROM DISK=N'!bakFile!' WITH REPLACE, NOUNLOAD, STATS=10, MOVE N'Ashley' TO @mdf, MOVE N'Ashley_log' TO @ldf;"
 if !errorlevel! neq 0 (
-    echo   [WARN ] RESTORE reported an error. You can restore manually from SSMS.
+    echo   [WARN ] RESTORE reported an error. You can restore manually from SSMS using WITH MOVE.
     call :ackWarn
 ) else (
     echo   [ OK  ] Ashley database restored.
