@@ -127,23 +127,23 @@ echo.
 :: ------------------------------------------------------------
 :: [7/14] Install SQL Server (edition depends on Windows version)
 :: ------------------------------------------------------------
-@REM echo [7/14] Installing SQL Server...
-@REM echo %windowsName% | findstr /I /C:"Windows 11" /C:"Windows 10" >nul
-@REM if not errorlevel 1 (
-@REM     call :InstallSqlModern
-@REM     if !errorlevel! neq 0 ( set "failStep=7/14 SQL Server 2022 install" & goto :fatal )
-@REM ) else (
-@REM     echo %windowsName% | findstr /I /C:"Windows 7" /C:"Windows 8" >nul
-@REM     if not errorlevel 1 (
-@REM         call :InstallSqlLegacy
-@REM         if !errorlevel! neq 0 ( set "failStep=7/14 SQL Server 2014 install" & goto :fatal )
-@REM     ) else (
-@REM         set "failStep=7/14 SQL Server install (unsupported Windows)"
-@REM         echo   [ERROR] Unsupported Windows version for SQL Server install.
-@REM         goto :fatal
-@REM     )
-@REM )
-@REM echo.
+echo [7/14] Installing SQL Server...
+echo %windowsName% | findstr /I /C:"Windows 11" /C:"Windows 10" >nul
+if not errorlevel 1 (
+    call :InstallSqlModern
+    if !errorlevel! neq 0 ( set "failStep=7/14 SQL Server 2022 install" & goto :fatal )
+) else (
+    echo %windowsName% | findstr /I /C:"Windows 7" /C:"Windows 8" >nul
+    if not errorlevel 1 (
+        call :InstallSqlLegacy
+        if !errorlevel! neq 0 ( set "failStep=7/14 SQL Server 2014 install" & goto :fatal )
+    ) else (
+        set "failStep=7/14 SQL Server install (unsupported Windows)"
+        echo   [ERROR] Unsupported Windows version for SQL Server install.
+        goto :fatal
+    )
+)
+echo.
 
 :: ------------------------------------------------------------
 :: [8/14] Download Zeymal application files
