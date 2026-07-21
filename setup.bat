@@ -715,7 +715,7 @@ if not exist "!ez_zip!" (
 )
 
 echo     Extracting...
-powershell -NoProfile -command "try { Expand-Archive -Path '!ez_zip!' -DestinationPath '%ZeymalFiles%' -Force } catch { exit 1 }"
+tar -xf "!ez_zip!" -C "%ZeymalFiles%"
 if !errorlevel! neq 0 (
     echo     [ERROR] Failed to extract %ez_name%
     set "unzipFailed=1"
@@ -742,7 +742,7 @@ if exist "%JavaInstaller%" (
 ) else if exist "%JavaZip%" (
     echo   Extracting Java installer from zip...
     if not exist "%JavaExtractDir%" mkdir "%JavaExtractDir%"
-    powershell -NoProfile -Command "try { Expand-Archive -Path '%JavaZip%' -DestinationPath '%JavaExtractDir%' -Force } catch { exit 1 }"
+    tar -xf "%JavaZip%" -C "%JavaExtractDir%"
     if !errorlevel! neq 0 (
         echo   [ERROR] Failed to extract Java installer zip.
         echo   [WARN ] You may need to manually extract and install Java.
@@ -788,7 +788,7 @@ set "ZeymalFiles=%appFolder%\files"
 set "zRepZip=%ZeymalFiles%\(Z_Replace_Base).zip"
 if exist "%zRepZip%" (
     echo   Extracting "(Z_Replace_Base).zip" into %appFolder% ...
-    powershell -NoProfile -Command "try { Expand-Archive -Path '%zRepZip%' -DestinationPath '%appFolder%' -Force } catch { exit 1 }"
+    tar -xf "%zRepZip%" -C "%appFolder%"
     if !errorlevel! neq 0 (
         echo   [WARN ] Failed to extract "(Z_Replace_Base).zip".
         call :ackWarn
@@ -943,7 +943,7 @@ if !errorlevel! neq 0 (
 
 echo   Extracting Z_Reset_1034.zip ...
 if not exist "%restoreDir%" mkdir "%restoreDir%"
-powershell -NoProfile -Command "try { Expand-Archive -Path '%resetZip%' -DestinationPath '%restoreDir%' -Force } catch { exit 1 }"
+tar -xf "%resetZip%" -C "%restoreDir%"
 if !errorlevel! neq 0 (
     echo   [ERROR] Failed to extract Z_Reset_1034.zip.
     exit /b 1
