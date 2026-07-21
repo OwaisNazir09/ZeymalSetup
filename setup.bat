@@ -1,4 +1,17 @@
 @echo off
+:: ============================================================
+:: Persistent-window guard.
+:: When the script is launched by double-click / "Run as
+:: administrator", Windows invokes it with cmd /c, which closes
+:: the window the moment the batch exits (or errors, or hits a
+:: parse fault). Re-launch ourselves once under cmd /k so the
+:: console stays open no matter how or where the script exits.
+:: ============================================================
+if /I not "%~1"=="__keepopen__" (
+    %comspec% /k call "%~f0" __keepopen__
+    exit /b
+)
+shift
 setlocal enabledelayedexpansion
 title Zeymal Environment Setup
 
