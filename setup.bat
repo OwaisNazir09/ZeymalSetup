@@ -904,7 +904,7 @@ if !errorlevel! neq 0 (
 echo   Adding MIME type "." = application/octet-stream ...
 "%appcmd%" set config "Default Web Site/RT" -section:staticContent /+"[fileExtension='.',mimeType='application/octet-stream']" /commit:apphost >nul 2>&1
 if !errorlevel! neq 0 (
-    echo   [WARN ] MIME type add failed (may already exist).
+    echo   [WARN ] MIME type add failed ^(may already exist^).
 ) else (
     echo   [ OK  ] MIME type added.
 )
