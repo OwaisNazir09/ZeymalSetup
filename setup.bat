@@ -983,12 +983,12 @@ echo   Backup file: !bakFile!
 where sqlcmd >nul 2>&1
 if !errorlevel! neq 0 (
     echo   [SKIP ] sqlcmd not found on PATH. Install SSMS/mssql-tools, then run:
-    echo           sqlcmd -S .\SQLEXPRESS -U sa -P %newPassword% ^-Q ^"RESTORE DATABASE Ashley FROM DISK='!bakFile!' WITH REPLACE^"
+    echo           sqlcmd -S .\SQLEXPRESS -U sa -P %newPassword% -C ^-Q ^"RESTORE DATABASE Ashley FROM DISK='!bakFile!' WITH REPLACE^"
     exit /b 0
 )
 
 echo   Restoring "Ashley" via sqlcmd ...
-sqlcmd -S .\SQLEXPRESS -U sa -P "%newPassword%" -Q "RESTORE DATABASE [Ashley] FROM DISK=N'!bakFile!' WITH REPLACE, NOUNLOAD, STATS=10"
+sqlcmd -S .\SQLEXPRESS -U sa -P "%newPassword%" -C -Q "RESTORE DATABASE [Ashley] FROM DISK=N'!bakFile!' WITH REPLACE, NOUNLOAD, STATS=10"
 if !errorlevel! neq 0 (
     echo   [WARN ] RESTORE reported an error. You can restore manually from SSMS.
     call :ackWarn
