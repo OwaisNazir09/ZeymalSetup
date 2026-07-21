@@ -551,6 +551,16 @@ echo   [ OK  ] All files extracted and zip files removed.
 exit /b 0
 
 
+:: ============================================================
+:: :DownloadZeymalItem <urlVarName> <destFileName> <idx> <total>
+:: Downloads a single Zeymal asset with full validation:
+::   - checks inputs, URL variable is set, target folder exists
+::   - skips only if an existing file is above the minimum size
+::   - prefers curl.exe; falls back to PowerShell WebClient
+::   - retries up to 3 times on failure
+::   - after download: file must exist, be non-tiny, and (for
+::     .zip files) open as a valid ZIP archive
+:: ============================================================
 :DownloadZeymalItem
 set "varName=%~1"
 set "fileName=%~2"
@@ -558,31 +568,117 @@ set "idx=%~3"
 set "total=%~4"
 set "fileUrl=!%varName%!"
 set "fileDest=%ZeymalFiles%\%fileName%"
+set "minSize=10240"
 
 echo.
 echo   [File %idx%/%total%] %fileName%
 
-if exist "!fileDest!" (
-    echo     [ OK  ] Already exists. Skipping.
-    echo            !fileDest!
-    exit /b 0
-)
-
-echo     Downloading...
-curl.exe -L --fail --show-error --output "!fileDest!" "!fileUrl!"
-set "curlRc=!errorlevel!"
-echo     Exit code: !curlRc!
-if !curlRc! neq 0 (
-    echo     [ERROR] Download failed (rc=!curlRc!).
-    echo            URL: !fileUrl!
-    if exist "!fileDest!" del /q "!fileDest!" >nul 2>&1
-    echo.
-    echo     Window will stay open. Press any key to continue...
-    pause >nul
+:: --- Input validation --------------------------------------------------
+if "%varName%"=="" (
+    echo     [ERROR] Missing URL variable name argument.
     exit /b 1
 )
-echo     [ OK  ] Saved to: !fileDest!
+if "%fileName%"=="" (
+    echo     [ERROR] Missing destination filename argument.
+    exit /b 1
+)
+if "!fileUrl!"=="" (
+    echo     [ERROR] URL variable "%varName%" is not set or is empty.
+    exit /b 1
+)
+if not defined ZeymalFiles (
+    echo     [ERROR] ZeymalFiles target folder variable is not set.
+    exit /b 1
+)
+if not exist "%ZeymalFiles%\" (
+    echo     [ERROR] Target folder does not exist: %ZeymalFiles%
+    exit /b 1
+)
+
+:: --- Skip only if an existing file looks complete ----------------------
+if exist "!fileDest!" (
+    set "existingSize=0"
+    for %%A in ("!fileDest!") do set "existingSize=%%~zA"
+    if !existingSize! GEQ %minSize% (
+        echo     [ OK  ] Already exists ^(!existingSize! bytes^). Skipping.
+        echo            !fileDest!
+        exit /b 0
+    )
+    echo     [WARN ] Existing file too small ^(!existingSize! bytes^). Re-downloading.
+    del /f /q "!fileDest!" >nul 2>&1
+)
+
+:: --- Pick a downloader (curl preferred, PowerShell fallback) ----------
+set "haveCurl=0"
+where curl.exe >nul 2>&1
+if !errorlevel! equ 0 set "haveCurl=1"
+
+set "isZip=0"
+if /I "!fileName:~-4!"==".zip" set "isZip=1"
+
+set "attempt=0"
+set "maxAttempts=3"
+
+:DZI_retry
+set /a attempt+=1
+echo     Attempt !attempt!/%maxAttempts% ...
+
+if "!haveCurl!"=="1" (
+    curl.exe -L --fail --show-error --connect-timeout 30 -o "!fileDest!" "!fileUrl!"
+    set "dlRc=!errorlevel!"
+) else (
+    set "DL_URL=!fileUrl!"
+    set "DL_DEST=!fileDest!"
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; (New-Object System.Net.WebClient).DownloadFile($env:DL_URL, $env:DL_DEST); exit 0 } catch { Write-Host ('     [ERROR] ' + $_.Exception.Message); exit 1 }"
+    set "dlRc=!errorlevel!"
+    set "DL_URL="
+    set "DL_DEST="
+)
+
+if !dlRc! neq 0 (
+    echo     [ERROR] Downloader exited with code !dlRc!.
+    if exist "!fileDest!" del /f /q "!fileDest!" >nul 2>&1
+    goto :DZI_check_retry
+)
+
+if not exist "!fileDest!" (
+    echo     [ERROR] File was not created after download.
+    goto :DZI_check_retry
+)
+
+set "dlSize=0"
+for %%A in ("!fileDest!") do set "dlSize=%%~zA"
+if !dlSize! LSS %minSize% (
+    echo     [ERROR] Downloaded file too small ^(!dlSize! bytes^).
+    echo             Likely an error/redirect page rather than the real asset.
+    del /f /q "!fileDest!" >nul 2>&1
+    goto :DZI_check_retry
+)
+
+if "!isZip!"=="1" (
+    set "ZIP_PATH=!fileDest!"
+    powershell -NoProfile -Command "try { Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction SilentlyContinue; $z = [System.IO.Compression.ZipFile]::OpenRead($env:ZIP_PATH); $z.Dispose(); exit 0 } catch { exit 1 }"
+    set "zipRc=!errorlevel!"
+    set "ZIP_PATH="
+    if !zipRc! neq 0 (
+        echo     [ERROR] File is not a valid ZIP archive.
+        del /f /q "!fileDest!" >nul 2>&1
+        goto :DZI_check_retry
+    )
+)
+
+echo     [ OK  ] Saved !dlSize! bytes to: !fileDest!
 exit /b 0
+
+:DZI_check_retry
+if !attempt! LSS %maxAttempts% (
+    echo     Retrying in 3 seconds...
+    timeout /t 3 /nobreak >nul 2>&1
+    goto :DZI_retry
+)
+echo     [ERROR] Download failed after %maxAttempts% attempts.
+echo             URL: !fileUrl!
+exit /b 1
 
 
 :UnzipZeymalFiles
@@ -594,6 +690,7 @@ call :ExtractZeymalItem "Zeymal.zip"                      3 4
 call :ExtractZeymalItem "Z_Reset_1034.zip"                4 4
 
 if !unzipFailed! neq 0 (
+    pause
     exit /b 1
 )
 exit /b 0
