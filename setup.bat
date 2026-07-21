@@ -230,6 +230,31 @@ echo     * Load the license via File ^> Zeymal Configuration ^> Load Config
 echo     * Restart Zeymal and login with admin/admin
 echo ============================================================
 echo.
+if defined needsReboot (
+    echo ============================================================
+    echo   REBOOT REQUIRED
+    echo ============================================================
+    echo   Windows must restart to finish activating IIS management
+    echo   tools ^(appcmd.exe^). Without this, the "RT" virtual
+    echo   directory and FTP site cannot be configured.
+    echo.
+    echo   After the machine reboots and you log back in, run
+    echo   setup.bat AGAIN ^(as Administrator^). The earlier steps
+    echo   will detect existing state and skip; step [13/14] will
+    echo   then complete successfully.
+    echo ============================================================
+    echo.
+    choice /c YN /t 30 /d Y /m "Reboot now to finish IIS setup"
+    if !errorlevel! equ 1 (
+        echo   Rebooting in 10 seconds. Save any open work now.
+        shutdown /r /t 10 /c "Zeymal setup: rebooting to activate IIS. Re-run setup.bat after login."
+        exit /b 0
+    )
+    echo   Reboot skipped. You MUST reboot manually before re-running setup.bat,
+    echo   otherwise IIS configuration will keep failing.
+    echo.
+)
+
 echo   Setup finished successfully.
 echo   THIS WINDOW WILL NOT CLOSE. Close it manually (X button) when done reading.
 echo.
@@ -860,7 +885,9 @@ exit /b 0
 :ConfigureIisSites
 set "appcmd=%windir%\system32\inetsrv\appcmd.exe"
 if not exist "%appcmd%" (
-    echo   [SKIP ] appcmd.exe not found. Ensure IIS is installed then re-run.
+    echo   [SKIP ] appcmd.exe not found. IIS management tools become available only after a reboot.
+    echo           A reboot will be scheduled after this run finishes. Re-run setup.bat after login.
+    set "needsReboot=1"
     exit /b 0
 )
 
@@ -935,7 +962,20 @@ for /f "delims=" %%F in ('dir /b /s "%restoreDir%\*.bak" 2^>nul') do (
     if not defined bakFile set "bakFile=%%F"
 )
 if not defined bakFile (
-    echo   [ERROR] No .bak file found inside Z_Reset_1034.zip.
+    echo   [INFO ] No .bak file found; scanning extracted files for a SQL backup ^(TAPE header^)...
+    for /f "delims=" %%F in ('dir /b /s /a-d "%restoreDir%" 2^>nul') do (
+        if not defined bakFile (
+            powershell -NoProfile -Command "$b=[System.IO.File]::ReadAllBytes('%%F') | Select-Object -First 4; if(($b.Count -eq 4) -and ($b[0] -eq 0x54) -and ($b[1] -eq 0x41) -and ($b[2] -eq 0x50) -and ($b[3] -eq 0x45)){exit 0}else{exit 1}" >nul 2>&1
+            if !errorlevel! equ 0 (
+                echo   [ OK  ] Detected SQL backup in "%%~nxF" ^(no extension^). Renaming to Ashley.bak.
+                ren "%%F" "Ashley.bak" >nul 2>&1
+                set "bakFile=%%~dpFAshley.bak"
+            )
+        )
+    )
+)
+if not defined bakFile (
+    echo   [ERROR] No .bak file ^(and no TAPE-format backup^) found inside Z_Reset_1034.zip.
     exit /b 1
 )
 echo   Backup file: !bakFile!
