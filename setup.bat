@@ -711,10 +711,10 @@ exit /b 1
 :UnzipZeymalFiles
 set "unzipFailed=0"
 
-call :ExtractZeymalItem "(Z_Replace_Base)"            1 4
-call :ExtractZeymalItem "jre-8u271-windows-i586-iftw" 2 4
-call :ExtractZeymalItem "Zeymal"                      3 4
-call :ExtractZeymalItem "Z_Reset_1034"                4 4
+call :ExtractZeymalItem "(Z_Replace_Base).zip"            1 4
+call :ExtractZeymalItem "jre-8u271-windows-i586-iftw.zip" 2 4
+call :ExtractZeymalItem "Zeymal.zip"                      3 4
+call :ExtractZeymalItem "Z_Reset_1034.zip"                4 4
 
 if !unzipFailed! neq 0 (
     echo.
@@ -728,17 +728,17 @@ exit /b 0
 set "ez_name=%~1"
 set "ez_idx=%~2"
 set "ez_total=%~3"
-set "ez_zip=%ZeymalFiles%\%ez_name%"
+set "ez_zip=%ZeymalFiles%\%ez_name%.zip"
 set "ez_marker=%ZeymalFiles%\%ez_name%.extracted"
 
 echo.
-echo   [%ez_idx%/%ez_total%] %ez_name%
+echo   [!ez_idx!/!ez_total!] !ez_name!
 if exist "!ez_marker!" (
     echo     [ OK  ] Already extracted. Skipping.
     exit /b 0
 )
 if not exist "!ez_zip!" (
-    echo     [WARN] %ez_name% not found. Skipping extraction.
+    echo     [WARN] !ez_name! not found. Skipping extraction.
     exit /b 0
 )
 
@@ -750,11 +750,11 @@ tar -xvf "!ez_zip!" -C "%ZeymalFiles%"
 set "ez_rc=!errorlevel!"
 echo     ------------------------------------------------------------
 if !ez_rc! neq 0 (
-    echo     [ERROR] Failed to extract %ez_name% ^(tar exit !ez_rc!^)
+    echo     [ERROR] Failed to extract !ez_name! ^(tar exit !ez_rc!^)
     set "unzipFailed=1"
     exit /b 1
 )
-echo     [ OK  ] Extracted %ez_name%
+echo     [ OK  ] Extracted !ez_name!
 > "!ez_marker!" echo extracted
 exit /b 0
 
