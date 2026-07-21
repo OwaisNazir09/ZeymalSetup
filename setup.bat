@@ -111,28 +111,28 @@ if not exist "%DownloadPath%" (
 )
 echo.
 
-:: ------------------------------------------------------------
-:: [7/14] Install SQL Server (edition depends on Windows version)
-:: ------------------------------------------------------------
-echo [7/14] Installing SQL Server...
-echo %windowsName% | findstr /I /C:"Windows 11" /C:"Windows 10" >nul
-if not errorlevel 1 (
-    call :InstallSqlModern
-    if !errorlevel! neq 0 ( set "failStep=7/14 SQL Server 2022 install" & goto :fatal )
-) else (
-    echo %windowsName% | findstr /I /C:"Windows 7" /C:"Windows 8" >nul
-    if not errorlevel 1 (
-        call :InstallSqlLegacy
-        if !errorlevel! neq 0 ( set "failStep=7/14 SQL Server 2014 install" & goto :fatal )
-    ) else (
-        set "failStep=7/14 SQL Server install (unsupported Windows)"
-        echo   [ERROR] Unsupported Windows version for SQL Server install.
-        goto :fatal
-    )
-)
-echo.
+@REM :: ------------------------------------------------------------
+@REM :: [7/14] Install SQL Server (edition depends on Windows version)
+@REM :: ------------------------------------------------------------
+@REM echo [7/14] Installing SQL Server...
+@REM echo %windowsName% | findstr /I /C:"Windows 11" /C:"Windows 10" >nul
+@REM if not errorlevel 1 (
+@REM     call :InstallSqlModern
+@REM     if !errorlevel! neq 0 ( set "failStep=7/14 SQL Server 2022 install" & goto :fatal )
+@REM ) else (
+@REM     echo %windowsName% | findstr /I /C:"Windows 7" /C:"Windows 8" >nul
+@REM     if not errorlevel 1 (
+@REM         call :InstallSqlLegacy
+@REM         if !errorlevel! neq 0 ( set "failStep=7/14 SQL Server 2014 install" & goto :fatal )
+@REM     ) else (
+@REM         set "failStep=7/14 SQL Server install (unsupported Windows)"
+@REM         echo   [ERROR] Unsupported Windows version for SQL Server install.
+@REM         goto :fatal
+@REM     )
+@REM )
+@REM echo.
 
-:: ------------------------------------------------------------
+@REM :: ------------------------------------------------------------
 :: [8/14] Install Java Runtime Environment (from extracted zip)
 :: ------------------------------------------------------------
 echo [8/14] Installing Java Runtime Environment...
@@ -209,9 +209,13 @@ echo     * Load the license via File ^> Zeymal Configuration ^> Load Config
 echo     * Restart Zeymal and login with admin/admin
 echo ============================================================
 echo.
-echo   Setup finished successfully. Press any key to close this window...
-pause >nul
-exit /b 0
+echo   Setup finished successfully.
+echo   THIS WINDOW WILL NOT CLOSE. Close it manually (X button) when done reading.
+echo.
+:done_wait
+pause
+echo   Still here. Close this window manually when you are done.
+goto :done_wait
 
 
 :: ============================================================
@@ -519,13 +523,15 @@ set "ZeymalIftwInstaller=%ZeymalBaseUrl%jre-8u271-windows-i586-iftw.zip"
 set "Zeymalexe=%ZeymalBaseUrl%Zeymal.zip"
 set "ZeymalResetxip=%ZeymalBaseUrl%Z_Reset_1034.zip"
 
-echo   Cleaning any existing Zeymal zip files for a fresh download...
-del /f /q "%ZeymalFiles%\(Z_Replace_Base).zip"            >nul 2>&1
-del /f /q "%ZeymalFiles%\jre-8u271-windows-i586-iftw.zip" >nul 2>&1
-del /f /q "%ZeymalFiles%\Zeymal.zip"                      >nul 2>&1
-del /f /q "%ZeymalFiles%\Z_Reset_1034.zip"                >nul 2>&1
-del /f /q "%ZeymalFiles%\*.extracted"                     >nul 2>&1
-echo   [ OK  ] Old zip files removed. Starting fresh downloads.
+echo   Checking existing files ^(complete files ^>= 10 KB will be skipped^)...
+echo   Target folder: %ZeymalFiles%
+for %%F in ("(Z_Replace_Base).zip" "jre-8u271-windows-i586-iftw.zip" "Zeymal.zip" "Z_Reset_1034.zip") do (
+    if exist "%ZeymalFiles%\%%~F" (
+        for %%A in ("%ZeymalFiles%\%%~F") do echo     [FOUND] %%~F  ^(%%~zA bytes^)
+    ) else (
+        echo     [MISS ] %%~F  ^(will download^)
+    )
+)
 
 call :DownloadZeymalItem "ZeymalRplaceXip"     "(Z_Replace_Base).zip"            1 4
 if !errorlevel! neq 0 exit /b 1
@@ -547,7 +553,7 @@ if !errorlevel! neq 0 (
     exit /b 1
 )
 
-echo   [ OK  ] All files extracted and zip files removed.
+echo   [ OK  ] All files extracted successfully.
 exit /b 0
 
 
@@ -690,7 +696,8 @@ call :ExtractZeymalItem "Zeymal.zip"                      3 4
 call :ExtractZeymalItem "Z_Reset_1034.zip"                4 4
 
 if !unzipFailed! neq 0 (
-    pause
+    echo.
+    echo   [ERROR] One or more archives failed to extract.
     exit /b 1
 )
 exit /b 0
@@ -714,10 +721,15 @@ if not exist "!ez_zip!" (
     exit /b 0
 )
 
-echo     Extracting...
-tar -xf "!ez_zip!" -C "%ZeymalFiles%"
-if !errorlevel! neq 0 (
-    echo     [ERROR] Failed to extract %ez_name%
+for %%A in ("!ez_zip!") do echo     Source: !ez_zip! ^(%%~zA bytes^)
+echo     Target: %ZeymalFiles%
+echo     Extracting ^(verbose - each file shown^)...
+echo     ------------------------------------------------------------
+tar -xvf "!ez_zip!" -C "%ZeymalFiles%"
+set "ez_rc=!errorlevel!"
+echo     ------------------------------------------------------------
+if !ez_rc! neq 0 (
+    echo     [ERROR] Failed to extract %ez_name% ^(tar exit !ez_rc!^)
     set "unzipFailed=1"
     exit /b 1
 )
@@ -740,9 +752,11 @@ set "JavaInstaller=%JavaExtractDir%\jre-8u271-windows-i586-iftw.exe"
 if exist "%JavaInstaller%" (
     echo   [ OK  ] Java installer already extracted.
 ) else if exist "%JavaZip%" (
-    echo   Extracting Java installer from zip...
+    echo   Extracting Java installer from zip ^(verbose^)...
     if not exist "%JavaExtractDir%" mkdir "%JavaExtractDir%"
-    tar -xf "%JavaZip%" -C "%JavaExtractDir%"
+    echo   ------------------------------------------------------------
+    tar -xvf "%JavaZip%" -C "%JavaExtractDir%"
+    echo   ------------------------------------------------------------
     if !errorlevel! neq 0 (
         echo   [ERROR] Failed to extract Java installer zip.
         echo   [WARN ] You may need to manually extract and install Java.
@@ -787,8 +801,10 @@ set "ZeymalFiles=%appFolder%\files"
 
 set "zRepZip=%ZeymalFiles%\(Z_Replace_Base).zip"
 if exist "%zRepZip%" (
-    echo   Extracting "(Z_Replace_Base).zip" into %appFolder% ...
-    tar -xf "%zRepZip%" -C "%appFolder%"
+    echo   Extracting "(Z_Replace_Base).zip" into %appFolder% ^(verbose^)...
+    echo   ------------------------------------------------------------
+    tar -xvf "%zRepZip%" -C "%appFolder%"
+    echo   ------------------------------------------------------------
     if !errorlevel! neq 0 (
         echo   [WARN ] Failed to extract "(Z_Replace_Base).zip".
         call :ackWarn
@@ -941,11 +957,14 @@ if !errorlevel! neq 0 (
     exit /b 0
 )
 
-echo   Extracting Z_Reset_1034.zip ...
+echo   Extracting Z_Reset_1034.zip ^(verbose^)...
 if not exist "%restoreDir%" mkdir "%restoreDir%"
-tar -xf "%resetZip%" -C "%restoreDir%"
-if !errorlevel! neq 0 (
-    echo   [ERROR] Failed to extract Z_Reset_1034.zip.
+echo   ------------------------------------------------------------
+tar -xvf "%resetZip%" -C "%restoreDir%"
+set "ashRc=!errorlevel!"
+echo   ------------------------------------------------------------
+if !ashRc! neq 0 (
+    echo   [ERROR] Failed to extract Z_Reset_1034.zip ^(tar exit !ashRc!^).
     exit /b 1
 )
 
