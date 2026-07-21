@@ -711,10 +711,10 @@ exit /b 1
 :UnzipZeymalFiles
 set "unzipFailed=0"
 
-call :ExtractZeymalItem "(Z_Replace_Base).zip"            1 4
-call :ExtractZeymalItem "jre-8u271-windows-i586-iftw.zip" 2 4
-call :ExtractZeymalItem "Zeymal.zip"                      3 4
-call :ExtractZeymalItem "Z_Reset_1034.zip"                4 4
+call :ExtractZeymalItem "(Z_Replace_Base)"            1 4
+call :ExtractZeymalItem "jre-8u271-windows-i586-iftw" 2 4
+call :ExtractZeymalItem "Zeymal"                      3 4
+call :ExtractZeymalItem "Z_Reset_1034"                4 4
 
 if !unzipFailed! neq 0 (
     echo.
