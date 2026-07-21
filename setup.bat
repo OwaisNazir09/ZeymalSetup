@@ -146,12 +146,12 @@ echo.
 @REM echo.
 
 :: ------------------------------------------------------------
-:: [8/14] Download and extract Zeymal application files
+:: [8/14] Download Zeymal application files
 :: ------------------------------------------------------------
-echo [8/14] Downloading and extracting Zeymal application files...
+echo [8/14] Downloading Zeymal application files...
 call :DownloadZeymalFiles
 if !errorlevel! neq 0 (
-    echo   [WARN ] Zeymal file download or extraction had issues.
+    echo   [WARN ] Zeymal file download had issues.
     echo           You can complete this manually:
     echo             Source URL : %ZeymalBaseUrl%
     echo             Target dir : %appFolder%\files
@@ -564,17 +564,6 @@ call :DownloadZeymalItem "ZeymalResetxip"      "Z_Reset_1034.zip"               
 if !errorlevel! neq 0 exit /b 1
 
 echo   [ OK  ] All Zeymal files downloaded successfully.
-echo.
-echo   Extracting all zip files...
-
-call :UnzipZeymalFiles
-
-if !errorlevel! neq 0 (
-    echo   [ERROR] Failed to extract some files.
-    exit /b 1
-)
-
-echo   [ OK  ] All files extracted successfully.
 exit /b 0
 
 
@@ -708,53 +697,41 @@ echo             URL: !fileUrl!
 exit /b 1
 
 
-:UnzipZeymalFiles
-set "unzipFailed=0"
-
-call :ExtractZeymalItem "(Z_Replace_Base).zip"            1 4
-call :ExtractZeymalItem "jre-8u271-windows-i586-iftw.zip" 2 4
-call :ExtractZeymalItem "Zeymal.zip"                      3 4
-call :ExtractZeymalItem "Z_Reset_1034.zip"                4 4
-
-if !unzipFailed! neq 0 (
-    echo.
-    echo   [ERROR] One or more archives failed to extract.
-    exit /b 1
-)
-exit /b 0
-
-
-:ExtractZeymalItem
-set "ez_name=%~1"
-set "ez_idx=%~2"
-set "ez_total=%~3"
-set "ez_zip=%ZeymalFiles%\%ez_name%.zip"
-set "ez_marker=%ZeymalFiles%\%ez_name%.extracted"
+:: ============================================================
+:: :ExtractZip <zipPath> <destDir> <label>
+:: Extracts a zip once and drops a "<zip>.extracted" marker
+:: next to the zip so subsequent runs skip it.
+:: ============================================================
+:ExtractZip
+set "ez_zip=%~1"
+set "ez_dest=%~2"
+set "ez_label=%~3"
+set "ez_marker=!ez_zip!.extracted"
 
 echo.
-echo   [!ez_idx!/!ez_total!] !ez_name!
+echo   [Extract] !ez_label!
 if exist "!ez_marker!" (
     echo     [ OK  ] Already extracted. Skipping.
     exit /b 0
 )
 if not exist "!ez_zip!" (
-    echo     [WARN] !ez_name! not found. Skipping extraction.
-    exit /b 0
+    echo     [WARN] !ez_label! not found: !ez_zip!
+    exit /b 1
 )
+if not exist "!ez_dest!\" mkdir "!ez_dest!"
 
 for %%A in ("!ez_zip!") do echo     Source: !ez_zip! ^(%%~zA bytes^)
-echo     Target: %ZeymalFiles%
+echo     Target: !ez_dest!
 echo     Extracting ^(verbose - each file shown^)...
 echo     ------------------------------------------------------------
-tar -xvf "!ez_zip!" -C "%ZeymalFiles%"
+tar -xvf "!ez_zip!" -C "!ez_dest!"
 set "ez_rc=!errorlevel!"
 echo     ------------------------------------------------------------
 if !ez_rc! neq 0 (
-    echo     [ERROR] Failed to extract !ez_name! ^(tar exit !ez_rc!^)
-    set "unzipFailed=1"
+    echo     [ERROR] Failed to extract !ez_label! ^(tar exit !ez_rc!^)
     exit /b 1
 )
-echo     [ OK  ] Extracted !ez_name!
+echo     [ OK  ] Extracted !ez_label!
 > "!ez_marker!" echo extracted
 exit /b 0
 
@@ -772,32 +749,14 @@ set "JavaZip=%ZeymalFiles%\jre-8u271-windows-i586-iftw.zip"
 set "JavaExtractDir=%ZeymalFiles%\jre_extract"
 set "JavaInstaller=%JavaExtractDir%\jre-8u271-windows-i586-iftw.exe"
 
-if exist "%JavaInstaller%" (
-    echo   [ OK  ] Java installer already extracted at:
-    echo           %JavaInstaller%
-    goto :InstallJava_Run
+if not exist "%JavaInstaller%" (
+    call :ExtractZip "%JavaZip%" "%JavaExtractDir%" "Java JRE 8u271 installer"
+    if !errorlevel! neq 0 (
+        echo   [WARN ] Failed to extract Java installer zip.
+        exit /b 1
+    )
 )
 
-if not exist "%JavaZip%" (
-    echo   [WARN ] Java zip file not found at:
-    echo           %JavaZip%
-    echo           Skipping Java install.
-    exit /b 1
-)
-
-echo   Extracting Java installer from zip ^(verbose^)...
-if not exist "%JavaExtractDir%" mkdir "%JavaExtractDir%"
-echo   ------------------------------------------------------------
-tar -xvf "%JavaZip%" -C "%JavaExtractDir%"
-set "javaExtractRc=!errorlevel!"
-echo   ------------------------------------------------------------
-if !javaExtractRc! neq 0 (
-    echo   [WARN ] Failed to extract Java installer zip ^(tar exit !javaExtractRc!^).
-    exit /b 1
-)
-echo   [ OK  ] Java installer extracted.
-
-:InstallJava_Run
 if not exist "%JavaInstaller%" (
     echo   [WARN ] Java installer executable not found at:
     echo           %JavaInstaller%
@@ -824,39 +783,22 @@ exit /b 0
 :DeployZeymalFiles
 set "ZeymalFiles=%appFolder%\files"
 
-set "zRepZip=%ZeymalFiles%\(Z_Replace_Base).zip"
-if exist "%zRepZip%" (
-    echo   Extracting "(Z_Replace_Base).zip" into %appFolder% ^(verbose^)...
-    echo   ------------------------------------------------------------
-    tar -xvf "%zRepZip%" -C "%appFolder%"
-    echo   ------------------------------------------------------------
-    if !errorlevel! neq 0 (
-        echo   [WARN ] Failed to extract "(Z_Replace_Base).zip".
-        call :ackWarn
-    ) else (
-        echo   [ OK  ] Extracted.
-    )
-) else (
-    echo   [WARN ] "(Z_Replace_Base).zip" not found in %ZeymalFiles%.
-    call :ackWarn
-)
+call :ExtractZip "%ZeymalFiles%\(Z_Replace_Base).zip" "%appFolder%" "(Z_Replace_Base).zip"
+if !errorlevel! neq 0 call :ackWarn
 
-call :CopyIfPresent "%ZeymalFiles%\Zeymal.jar"                      "%appFolder%\Zeymal.jar"
-call :CopyIfPresent "%ZeymalFiles%\Zeymal.exe"                      "%appFolder%\Zeymal.exe"
-call :CopyIfPresent "%ZeymalFiles%\jre-8u271-windows-i586-iftw.exe" "%appFolder%\jre-8u271-windows-i586-iftw.exe"
-exit /b 0
+call :ExtractZip "%ZeymalFiles%\Zeymal.zip" "%appFolder%" "Zeymal.zip"
+if !errorlevel! neq 0 call :ackWarn
 
-
-:CopyIfPresent
-if exist "%~1" (
-    copy /Y "%~1" "%~2" >nul
+set "javaExe=%ZeymalFiles%\jre_extract\jre-8u271-windows-i586-iftw.exe"
+if exist "%javaExe%" (
+    copy /Y "%javaExe%" "%appFolder%\jre-8u271-windows-i586-iftw.exe" >nul
     if !errorlevel! equ 0 (
-        echo   [ OK  ] Copied: %~nx1
+        echo   [ OK  ] Copied Java installer into %appFolder%
     ) else (
-        echo   [WARN ] Failed to copy: %~nx1
+        echo   [WARN ] Failed to copy Java installer into %appFolder%.
     )
 ) else (
-    echo   [WARN ] Missing (skip copy): %~1
+    echo   [WARN ] Java installer not found at %javaExe%. Skipping copy.
 )
 exit /b 0
 
@@ -982,14 +924,9 @@ if !errorlevel! neq 0 (
     exit /b 0
 )
 
-echo   Extracting Z_Reset_1034.zip ^(verbose^)...
-if not exist "%restoreDir%" mkdir "%restoreDir%"
-echo   ------------------------------------------------------------
-tar -xvf "%resetZip%" -C "%restoreDir%"
-set "ashRc=!errorlevel!"
-echo   ------------------------------------------------------------
-if !ashRc! neq 0 (
-    echo   [ERROR] Failed to extract Z_Reset_1034.zip ^(tar exit !ashRc!^).
+call :ExtractZip "%resetZip%" "%restoreDir%" "Z_Reset_1034.zip"
+if !errorlevel! neq 0 (
+    echo   [ERROR] Failed to extract Z_Reset_1034.zip.
     exit /b 1
 )
 
