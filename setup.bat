@@ -132,26 +132,34 @@ echo.
 @REM )
 @REM echo.
 
-@REM :: ------------------------------------------------------------
-:: [8/14] Install Java Runtime Environment (from extracted zip)
 :: ------------------------------------------------------------
-echo [8/14] Installing Java Runtime Environment...
-
+:: [8/14] Download and extract Zeymal application files
+:: ------------------------------------------------------------
+echo [8/14] Downloading and extracting Zeymal application files...
 call :DownloadZeymalFiles
 if !errorlevel! neq 0 (
-    set "failStep=9/14 download Zeymal application files"
-    echo   [ERROR] One or more Zeymal files failed to download.
-    goto :fatal
+    echo   [WARN ] Zeymal file download or extraction had issues.
+    echo           You can complete this manually:
+    echo             Source URL : %ZeymalBaseUrl%
+    echo             Target dir : %appFolder%\files
+    echo           Continuing so the rest of the setup can run.
+    call :ackWarn
 )
 echo.
 
 :: ------------------------------------------------------------
-:: [9/14] Download Zeymal application files
+:: [9/14] Install Java Runtime Environment 8u271
 :: ------------------------------------------------------------
-echo [9/14] Downloading Zeymal application files...
+echo [9/14] Installing Java Runtime Environment 8u271...
 call :InstallJava
+if !errorlevel! neq 0 (
+    echo   [WARN ] Java installation reported an error or was skipped.
+    echo           You can install Java manually from:
+    echo             %appFolder%\files\jre-8u271-windows-i586-iftw.exe
+    echo           Continuing with the rest of the setup...
+    call :ackWarn
+)
 echo.
-
 :: ------------------------------------------------------------
 :: [10/14] Deploy files into the Zeymal folder
 :: ------------------------------------------------------------
@@ -741,6 +749,8 @@ exit /b 0
 
 :: ============================================================
 :: Java JRE 8u271 (from extracted zip file)
+:: Returns 0 on successful install, 1 if anything went wrong.
+:: The caller is responsible for warning + continuing on 1.
 :: ============================================================
 :InstallJava
 echo   --- Java JRE 8u271 ---
@@ -750,41 +760,43 @@ set "JavaExtractDir=%ZeymalFiles%\jre_extract"
 set "JavaInstaller=%JavaExtractDir%\jre-8u271-windows-i586-iftw.exe"
 
 if exist "%JavaInstaller%" (
-    echo   [ OK  ] Java installer already extracted.
-) else if exist "%JavaZip%" (
-    echo   Extracting Java installer from zip ^(verbose^)...
-    if not exist "%JavaExtractDir%" mkdir "%JavaExtractDir%"
-    echo   ------------------------------------------------------------
-    tar -xvf "%JavaZip%" -C "%JavaExtractDir%"
-    echo   ------------------------------------------------------------
-    if !errorlevel! neq 0 (
-        echo   [ERROR] Failed to extract Java installer zip.
-        echo   [WARN ] You may need to manually extract and install Java.
-        call :ackWarn
-        exit /b 0
-    )
-    echo   [ OK  ] Java installer extracted.
-) else (
-    echo   [WARN ] Java zip file not found at: %JavaZip%
-    echo   [WARN ] Java was not downloaded or extracted properly.
-    echo   [WARN ] You may need to manually install Java.
-    call :ackWarn
-    exit /b 0
+    echo   [ OK  ] Java installer already extracted at:
+    echo           %JavaInstaller%
+    goto :InstallJava_Run
 )
 
+if not exist "%JavaZip%" (
+    echo   [WARN ] Java zip file not found at:
+    echo           %JavaZip%
+    echo           Skipping Java install.
+    exit /b 1
+)
+
+echo   Extracting Java installer from zip ^(verbose^)...
+if not exist "%JavaExtractDir%" mkdir "%JavaExtractDir%"
+echo   ------------------------------------------------------------
+tar -xvf "%JavaZip%" -C "%JavaExtractDir%"
+set "javaExtractRc=!errorlevel!"
+echo   ------------------------------------------------------------
+if !javaExtractRc! neq 0 (
+    echo   [WARN ] Failed to extract Java installer zip ^(tar exit !javaExtractRc!^).
+    exit /b 1
+)
+echo   [ OK  ] Java installer extracted.
+
+:InstallJava_Run
 if not exist "%JavaInstaller%" (
-    echo   [WARN ] Java installer executable not found at: %JavaInstaller%
-    echo   [WARN ] You may need to manually install Java.
-    call :ackWarn
-    exit /b 0
+    echo   [WARN ] Java installer executable not found at:
+    echo           %JavaInstaller%
+    exit /b 1
 )
 
 echo   Installing Java silently (auto-update disabled)...
 "%JavaInstaller%" /s AUTO_UPDATE=Disable STATIC=1 REBOOT=Disable EULA=Disable NOSTARTMENU=Enable WEB_ANALYTICS=Disable
-if !errorlevel! neq 0 (
-    echo   [WARN ] Java installation reported an error. You can install it manually if needed.
-    call :ackWarn
-    exit /b 0
+set "javaInstallRc=!errorlevel!"
+if !javaInstallRc! neq 0 (
+    echo   [WARN ] Java installer exit code !javaInstallRc!.
+    exit /b 1
 )
 echo   [ OK  ] Java JRE 8u271 installed successfully.
 exit /b 0
