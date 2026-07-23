@@ -185,6 +185,17 @@ if !errorlevel! neq 0 (
 echo.
 
 :: ------------------------------------------------------------
+:: [10.5/14] Copy Zeymal files to Program Files folder
+:: ------------------------------------------------------------
+echo [10.5/14] Copying Zeymal files to C:\Program Files\Zeymal...
+call :CopyToProgramFiles
+if !errorlevel! neq 0 (
+    echo   [WARN ] Copy to Program Files had issues.
+    call :ackWarn
+)
+echo.
+
+:: ------------------------------------------------------------
 :: [11/14] Configure SQL Server (TCP/IP, port 1433, service LogOn)
 :: ------------------------------------------------------------
 echo [11/14] Configuring SQL Server networking and service...
@@ -827,7 +838,54 @@ if exist "%javaExe%" (
 )
 exit /b 0
 
+:: ============================================================
+:: Copy Zeymal files from appFolder to Program Files (x86)
+:: ============================================================
+:CopyToProgramFiles
+set "sourceFolder=%appFolder%"
+set "destFolder=C:\Program Files (x86)\Zeymal"
 
+echo.
+echo   --- Copying Zeymal files to Program Files (x86) ---
+echo     Source: %sourceFolder%
+echo     Target: %destFolder%
+
+:: Create destination folder if it doesn't exist
+if not exist "%destFolder%" (
+    mkdir "%destFolder%"
+    if !errorlevel! neq 0 (
+        echo   [ERROR] Failed to create destination folder: %destFolder%
+        echo           Run this script as Administrator.
+        call :ackWarn
+        exit /b 1
+    )
+    echo   [ OK  ] Created: %destFolder%
+) else (
+    echo   [ OK  ] Destination folder already exists: %destFolder%
+)
+
+:: Copy all files and folders, merging/replacing existing ones
+echo   Copying files (overwriting existing, keeping new ones)...
+xcopy "%sourceFolder%\*" "%destFolder%\" /E /H /R /Y /I >nul 2>&1
+
+if !errorlevel! neq 0 (
+    echo   [WARN ] xcopy reported errors. Some files may not have copied.
+    call :ackWarn
+) else (
+    echo   [ OK  ] Files copied successfully to %destFolder%
+)
+
+:: Optional: Show what was copied
+echo   Files in destination:
+dir "%destFolder%" /B /A-D 2>nul | find /v /c "" >nul
+if !errorlevel! equ 0 (
+    echo     Total files: 
+    for /f %%A in ('dir "%destFolder%" /B /A-D 2^>nul ^| find /v /c ""') do echo       %%A file(s)
+) else (
+    echo     (No files found)
+)
+
+exit /b 0
 :: ============================================================
 :: Configure SQL Server: enable TCP/IP on port 1433 and set the
 :: service to Local System account, then restart.
