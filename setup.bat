@@ -837,7 +837,6 @@ if exist "%javaExe%" (
     echo   [WARN ] Java installer not found at %javaExe%. Skipping copy.
 )
 exit /b 0
-
 :: ============================================================
 :: Copy Zeymal files from appFolder to Program Files (x86)
 :: ============================================================
@@ -864,28 +863,30 @@ if not exist "%destFolder%" (
     echo   [ OK  ] Destination folder already exists: %destFolder%
 )
 
-:: Copy all files and folders, merging/replacing existing ones
+:: Use robocopy - handles special characters better, preserves attributes, and has retry logic
 echo   Copying files (overwriting existing, keeping new ones)...
-xcopy "%sourceFolder%\*" "%destFolder%\" /E /H /R /Y /I >nul 2>&1
+robocopy "%sourceFolder%" "%destFolder%" /E /COPY:DAT /R:2 /W:5 /NP /NDL
 
-if !errorlevel! neq 0 (
-    echo   [WARN ] xcopy reported errors. Some files may not have copied.
+:: robocopy exit codes:
+:: 0-7 = success (0=no files, 1=files copied, 2-7=some skipped but okay)
+:: 8+ = failure
+if !errorlevel! GEQ 8 (
+    echo   [WARN ] robocopy reported errors. Some files may not have copied.
     call :ackWarn
+    exit /b 1
 ) else (
     echo   [ OK  ] Files copied successfully to %destFolder%
 )
 
-:: Optional: Show what was copied
-echo   Files in destination:
-dir "%destFolder%" /B /A-D 2>nul | find /v /c "" >nul
-if !errorlevel! equ 0 (
-    echo     Total files: 
-    for /f %%A in ('dir "%destFolder%" /B /A-D 2^>nul ^| find /v /c ""') do echo       %%A file(s)
-) else (
-    echo     (No files found)
-)
+:: Show summary of what was copied
+echo.
+echo   Copy summary:
+robocopy "%sourceFolder%" "%destFolder%" /L /E /BYTES /NP /NDL | findstr /C:"Files :" /C:"Bytes :" /C:"Times :"
 
 exit /b 0
+
+
+
 :: ============================================================
 :: Configure SQL Server: enable TCP/IP on port 1433 and set the
 :: service to Local System account, then restart.
