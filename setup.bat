@@ -920,21 +920,6 @@ echo Robocopy Exit Code : %RC%
 echo.
 
 
-
-:: Create a Desktop shortcut for all users
-powershell -NoProfile -Command ^
-    "$ws = New-Object -ComObject WScript.Shell; ^
-     $s  = $ws.CreateShortcut([System.Environment]::GetFolderPath('CommonDesktopDirectory') + '\Zeymal.lnk'); ^
-     $s.TargetPath       = '%destFolder%\Zeymal.exe'; ^
-     $s.WorkingDirectory = '%destFolder%'; ^
-     $s.Description      = 'Zeymal'; ^
-     $s.Save()" >nul 2>&1
-if !errorlevel! equ 0 (
-    echo   [ OK  ] Desktop shortcut created for all users.
-) else (
-    echo   [WARN ] Could not create Desktop shortcut.
-)
-
 echo [SUCCESS] Copy and registration completed successfully.
 echo ============================================================
 pause
