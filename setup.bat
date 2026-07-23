@@ -174,9 +174,9 @@ if !errorlevel! neq 0 (
 )
 echo.
 :: ------------------------------------------------------------
-:: [10/14] Deploy files into the Zeymal folder
+:: [10/14] Deploy files and install Zeymal application
 :: ------------------------------------------------------------
-echo [10/14] Deploying files into %appFolder%...
+echo [10/14] Deploying Zeymal application files...
 call :DeployZeymalFiles
 if !errorlevel! neq 0 (
     echo   [WARN ] Deployment finished with warnings.
@@ -184,17 +184,26 @@ if !errorlevel! neq 0 (
 )
 echo.
 
-echo [10/0/14] Install Zeymal.exe
-call :InstallZeymalExe
-if !errorlevel! neq 0 (
-    echo   [WARN ] Zeymal.exe installation had issues.
-    call :ackWarn
-)
+echo ============================================================
+echo.
+echo   ACTION REQUIRED: Install the Zeymal application
+echo.
+echo   The Zeymal installer is located here:
+echo.
+echo     %appFolder%\Zeymal.exe
+echo.
+echo   Please run that file now and complete the installation.
+echo   When you are done, press any key to continue setup.
+echo.
+echo ============================================================
+echo.
+pause >nul
+echo.
 
 :: ------------------------------------------------------------
 :: [10.5/14] Copy Zeymal files to Program Files folder
 :: ------------------------------------------------------------
-echo [10.5/14] Copying Zeymal files to C:\Program Files\Zeymal...
+echo [10.5/14] Copying Zeymal files to C:\Program Files (x86)\Zeymal...
 call :CopyToProgramFiles
 if !errorlevel! neq 0 (
     echo   [WARN ] Copy to Program Files had issues.
@@ -844,61 +853,6 @@ if exist "%javaExe%" (
     echo   [WARN ] Java installer not found at %javaExe%. Skipping copy.
 )
 exit /b 0
-:: ============================================================
-:: Install Zeymal.exe - extract and copy the executable
-:: ============================================================
-:InstallZeymalExe
-echo.
-echo [10.0/14] Installing Zeymal.exe...
-
-set "zeymalZip=%appFolder%\files\Zeymal.zip"
-set "zeymalExtract=%appFolder%\Zeymal_extract"
-
-if not exist "%zeymalZip%" (
-    echo   [ERROR] Zeymal.zip not found at: %zeymalZip%
-    exit /b 1
-)
-
-:: Extract Zeymal.zip if not already extracted
-if not exist "%zeymalExtract%\Zeymal.exe" (
-    echo   Extracting Zeymal.zip...
-    if not exist "%zeymalExtract%" mkdir "%zeymalExtract%"
-    tar -xvf "%zeymalZip%" -C "%zeymalExtract%"
-    if !errorlevel! neq 0 (
-        echo   [ERROR] Failed to extract Zeymal.zip
-        exit /b 1
-    )
-    echo   [ OK  ] Extracted Zeymal.zip
-) else (
-    echo   [ OK  ] Zeymal.exe already extracted
-)
-
-:: Find Zeymal.exe (might be in a subfolder)
-set "zeymalExe="
-for /f "delims=" %%F in ('dir /b /s "%zeymalExtract%\Zeymal.exe" 2^>nul') do (
-    if not defined zeymalExe set "zeymalExe=%%F"
-)
-
-if not defined zeymalExe (
-    echo   [ERROR] Zeymal.exe not found in extracted files
-    echo   Looking for any .exe files in extraction folder...
-    dir /s "%zeymalExtract%\*.exe"
-    exit /b 1
-)
-
-echo   Found Zeymal.exe at: !zeymalExe!
-
-:: Copy Zeymal.exe to app folder
-copy /Y "!zeymalExe!" "%appFolder%\Zeymal.exe" >nul
-if !errorlevel! neq 0 (
-    echo   [ERROR] Failed to copy Zeymal.exe to %appFolder%
-    exit /b 1
-)
-
-echo   [ OK  ] Zeymal.exe copied to %appFolder%\Zeymal.exe
-exit /b 0
-
-
 
 :CopyToProgramFiles
 echo.
