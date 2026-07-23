@@ -184,6 +184,13 @@ if !errorlevel! neq 0 (
 )
 echo.
 
+echo [10/0/14] Install Zeymal.exe
+call :InstallZeymalExe
+if !errorlevel! neq 0 (
+    echo   [WARN ] Zeymal.exe installation had issues.
+    call :ackWarn
+)
+
 :: ------------------------------------------------------------
 :: [10.5/14] Copy Zeymal files to Program Files folder
 :: ------------------------------------------------------------
@@ -837,88 +844,155 @@ if exist "%javaExe%" (
     echo   [WARN ] Java installer not found at %javaExe%. Skipping copy.
 )
 exit /b 0
+:: ============================================================
+:: Install Zeymal.exe - extract and copy the executable
+:: ============================================================
+:InstallZeymalExe
+echo.
+echo [10.0/14] Installing Zeymal.exe...
+
+set "zeymalZip=%appFolder%\files\Zeymal.zip"
+set "zeymalExtract=%appFolder%\Zeymal_extract"
+
+if not exist "%zeymalZip%" (
+    echo   [ERROR] Zeymal.zip not found at: %zeymalZip%
+    exit /b 1
+)
+
+:: Extract Zeymal.zip if not already extracted
+if not exist "%zeymalExtract%\Zeymal.exe" (
+    echo   Extracting Zeymal.zip...
+    if not exist "%zeymalExtract%" mkdir "%zeymalExtract%"
+    tar -xvf "%zeymalZip%" -C "%zeymalExtract%"
+    if !errorlevel! neq 0 (
+        echo   [ERROR] Failed to extract Zeymal.zip
+        exit /b 1
+    )
+    echo   [ OK  ] Extracted Zeymal.zip
+) else (
+    echo   [ OK  ] Zeymal.exe already extracted
+)
+
+:: Find Zeymal.exe (might be in a subfolder)
+set "zeymalExe="
+for /f "delims=" %%F in ('dir /b /s "%zeymalExtract%\Zeymal.exe" 2^>nul') do (
+    if not defined zeymalExe set "zeymalExe=%%F"
+)
+
+if not defined zeymalExe (
+    echo   [ERROR] Zeymal.exe not found in extracted files
+    echo   Looking for any .exe files in extraction folder...
+    dir /s "%zeymalExtract%\*.exe"
+    exit /b 1
+)
+
+echo   Found Zeymal.exe at: !zeymalExe!
+
+:: Copy Zeymal.exe to app folder
+copy /Y "!zeymalExe!" "%appFolder%\Zeymal.exe" >nul
+if !errorlevel! neq 0 (
+    echo   [ERROR] Failed to copy Zeymal.exe to %appFolder%
+    exit /b 1
+)
+
+echo   [ OK  ] Zeymal.exe copied to %appFolder%\Zeymal.exe
+exit /b 0
 
 
+:: ============================================================
+:: Copy Zeymal files to Program Files folder (Fixed version)
+:: ============================================================
 :CopyToProgramFiles
 echo.
 echo ============================================================
-echo [10.5/14] DEBUG - CopyToProgramFiles
+echo [10.5/14] Copying Zeymal files to Program Files...
 echo ============================================================
 
 set "sourceFolder=%appFolder%\(Z_Replace_Base)"
 set "destFolder=%ProgramFiles(x86)%\Zeymal"
 
-echo.
 echo Source Folder      : "%sourceFolder%"
 echo Destination Folder : "%destFolder%"
 echo.
 
-echo Checking source folder...
-if exist "%sourceFolder%" (
-    echo   [OK] Source folder exists.
-) else (
-    echo   [ERROR] Source folder DOES NOT EXIST!
-    dir "%sourceFolder%" 2>nul
-    pause
+:: Check if source exists (try alternative location if not)
+if not exist "%sourceFolder%" (
+    echo [WARN] Source folder not found: %sourceFolder%
+    echo Trying alternative: %appFolder%\files\(Z_Replace_Base)
+    set "sourceFolder=%appFolder%\files\(Z_Replace_Base)"
+)
+
+if not exist "%sourceFolder%" (
+    echo [ERROR] Source folder not found in either location!
+    echo Looking for any extracted folder...
+    dir /ad /b "%appFolder%"
+    dir /ad /b "%appFolder%\files"
     exit /b 1
 )
 
-echo.
-echo Checking destination folder...
-if exist "%destFolder%" (
-    echo   [OK] Destination folder already exists.
-) else (
-    echo   [INFO] Destination folder does not exist.
-    echo   Creating "%destFolder%"...
-    mkdir "%destFolder%"
-    echo   mkdir Exit Code = %ERRORLEVEL%
+echo [ OK  ] Source folder exists: %sourceFolder%
 
+:: Create destination
+if not exist "%destFolder%" (
+    echo Creating "%destFolder%"...
+    mkdir "%destFolder%" 2>nul
     if errorlevel 1 (
-        echo   [ERROR] Failed to create destination folder.
-        pause
+        echo [ERROR] Failed to create destination folder.
         exit /b 1
     )
-
-    echo   [OK] Destination folder created.
+    echo [ OK  ] Destination folder created.
+) else (
+    echo [ OK  ] Destination folder already exists.
 )
 
+:: Copy files using robocopy
 echo.
-echo Listing source folder...
-dir "%sourceFolder%"
-echo.
-
+echo Copying files from "%sourceFolder%" to "%destFolder%"...
 echo ============================================================
-echo Starting ROBOCOPY...
-echo ============================================================
-echo robocopy "%sourceFolder%" "%destFolder%" /E /COPY:DAT /R:2 /W:2
-echo.
 
-robocopy "%sourceFolder%" "%destFolder%" /E /COPY:DAT /R:2 /W:2
+robocopy "%sourceFolder%" "%destFolder%" /E /COPY:DAT /R:3 /W:5 /NP /NFL
 
 set "RC=%ERRORLEVEL%"
 
-echo.
-echo ============================================================
-echo ROBOCOPY FINISHED
 echo ============================================================
 echo Robocopy Exit Code : %RC%
 echo.
 
 if %RC% GEQ 8 (
-    echo [ERROR] Robocopy failed.
-    pause
+    echo [ERROR] Robocopy failed with error level %RC%
+    echo Errors occurred during copy.
     exit /b 1
+) else if %RC% GEQ 4 (
+    echo [WARN ] Some files may have been skipped (mismatch).
+    echo Check the output above for details.
+) else if %RC% LEQ 1 (
+    echo [ OK  ] Copy completed successfully.
+)
+
+:: Also ensure Zeymal.exe is in Program Files
+if exist "%appFolder%\Zeymal.exe" (
+    copy /Y "%appFolder%\Zeymal.exe" "%destFolder%\Zeymal.exe" >nul
+    if !errorlevel! equ 0 (
+        echo [ OK  ] Zeymal.exe copied to Program Files folder
+    )
+)
+
+:: Create shortcut on Desktop
+set "desktop=%USERPROFILE%\Desktop"
+if exist "%destFolder%\Zeymal.exe" (
+    echo Creating desktop shortcut...
+    powershell -NoProfile -Command "$WshShell = New-Object -comObject WScript.Shell; $Shortcut = $WshShell.CreateShortcut('%desktop%\Zeymal.lnk'); $Shortcut.TargetPath = '%destFolder%\Zeymal.exe'; $Shortcut.WorkingDirectory = '%destFolder%'; $Shortcut.Save()"
+    if !errorlevel! equ 0 (
+        echo [ OK  ] Desktop shortcut created
+    )
 )
 
 echo.
-echo Verifying destination...
-dir "%destFolder%"
-echo.
-
-echo [SUCCESS] Copy completed successfully.
 echo ============================================================
-pause
+echo [SUCCESS] Zeymal copied to Program Files
+echo ============================================================
 exit /b 0
+
 
 :: ============================================================
 :: Configure SQL Server: enable TCP/IP on port 1433 and set the
