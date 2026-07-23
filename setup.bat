@@ -965,39 +965,7 @@ echo ============================================================
 echo Robocopy Exit Code : %RC%
 echo.
 
-if %RC% GEQ 8 (
-    echo [ERROR] Robocopy failed.
-    pause
-    exit /b 1
-)
 
-echo.
-echo Verifying destination...
-dir "%destFolder%"
-echo.
-
-:: Copy Zeymal.exe into the installation folder so it sits beside its support files
-if exist "%appFolder%\Zeymal.exe" (
-    copy /Y "%appFolder%\Zeymal.exe" "%destFolder%\Zeymal.exe" >nul
-    if !errorlevel! equ 0 (
-        echo   [ OK  ] Zeymal.exe copied to %destFolder%
-    ) else (
-        echo   [WARN ] Failed to copy Zeymal.exe to %destFolder%
-    )
-) else (
-    echo   [WARN ] Zeymal.exe not found at %appFolder%\Zeymal.exe - run step 10.0 first
-)
-
-:: Register Zeymal in Windows (Add/Remove Programs) so it is recognised as installed
-reg add "HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Zeymal" /v "DisplayName"    /t REG_SZ /d "Zeymal"               /f >nul 2>&1
-reg add "HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Zeymal" /v "InstallLocation" /t REG_SZ /d "%destFolder%"          /f >nul 2>&1
-reg add "HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Zeymal" /v "DisplayVersion"  /t REG_SZ /d "1.0"                   /f >nul 2>&1
-reg add "HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Zeymal" /v "Publisher"       /t REG_SZ /d "Zeymal"               /f >nul 2>&1
-if !errorlevel! equ 0 (
-    echo   [ OK  ] Zeymal registered in Windows Add/Remove Programs.
-) else (
-    echo   [WARN ] Could not write registry entries for Zeymal.
-)
 
 :: Create a Desktop shortcut for all users
 powershell -NoProfile -Command ^
