@@ -837,55 +837,88 @@ if exist "%javaExe%" (
     echo   [WARN ] Java installer not found at %javaExe%. Skipping copy.
 )
 exit /b 0
-:: ============================================================
-:: Copy Zeymal files from appFolder to Program Files (x86)
-:: ============================================================
+
+
 :CopyToProgramFiles
-set "sourceFolder=%appFolder%"
-set "destFolder=C:\Program Files (x86)\Zeymal"
+echo.
+echo ============================================================
+echo [10.5/14] DEBUG - CopyToProgramFiles
+echo ============================================================
+
+set "sourceFolder=%appFolder%\(Z_Replace_Base)"
+set "destFolder=%ProgramFiles(x86)%\Zeymal"
 
 echo.
-echo   --- Copying Zeymal files to Program Files (x86) ---
-echo     Source: %sourceFolder%
-echo     Target: %destFolder%
+echo Source Folder      : "%sourceFolder%"
+echo Destination Folder : "%destFolder%"
+echo.
 
-:: Create destination folder if it doesn't exist
-if not exist "%destFolder%" (
+echo Checking source folder...
+if exist "%sourceFolder%" (
+    echo   [OK] Source folder exists.
+) else (
+    echo   [ERROR] Source folder DOES NOT EXIST!
+    dir "%sourceFolder%" 2>nul
+    pause
+    exit /b 1
+)
+
+echo.
+echo Checking destination folder...
+if exist "%destFolder%" (
+    echo   [OK] Destination folder already exists.
+) else (
+    echo   [INFO] Destination folder does not exist.
+    echo   Creating "%destFolder%"...
     mkdir "%destFolder%"
-    if !errorlevel! neq 0 (
-        echo   [ERROR] Failed to create destination folder: %destFolder%
-        echo           Run this script as Administrator.
-        call :ackWarn
+    echo   mkdir Exit Code = %ERRORLEVEL%
+
+    if errorlevel 1 (
+        echo   [ERROR] Failed to create destination folder.
+        pause
         exit /b 1
     )
-    echo   [ OK  ] Created: %destFolder%
-) else (
-    echo   [ OK  ] Destination folder already exists: %destFolder%
+
+    echo   [OK] Destination folder created.
 )
 
-:: Use robocopy - handles special characters better, preserves attributes, and has retry logic
-echo   Copying files (overwriting existing, keeping new ones)...
-robocopy "%sourceFolder%" "%destFolder%" /E /COPY:DAT /R:2 /W:5 /NP /NDL
-
-:: robocopy exit codes:
-:: 0-7 = success (0=no files, 1=files copied, 2-7=some skipped but okay)
-:: 8+ = failure
-if !errorlevel! GEQ 8 (
-    echo   [WARN ] robocopy reported errors. Some files may not have copied.
-    call :ackWarn
-    exit /b 1
-) else (
-    echo   [ OK  ] Files copied successfully to %destFolder%
-)
-
-:: Show summary of what was copied
 echo.
-echo   Copy summary:
-robocopy "%sourceFolder%" "%destFolder%" /L /E /BYTES /NP /NDL | findstr /C:"Files :" /C:"Bytes :" /C:"Times :"
+echo Listing source folder...
+dir "%sourceFolder%"
+echo.
 
+echo ============================================================
+echo Starting ROBOCOPY...
+echo ============================================================
+echo robocopy "%sourceFolder%" "%destFolder%" /E /COPY:DAT /R:2 /W:2
+echo.
+
+robocopy "%sourceFolder%" "%destFolder%" /E /COPY:DAT /R:2 /W:2
+
+set "RC=%ERRORLEVEL%"
+
+echo.
+echo ============================================================
+echo ROBOCOPY FINISHED
+echo ============================================================
+echo Robocopy Exit Code : %RC%
+echo.
+
+if %RC% GEQ 8 (
+    echo [ERROR] Robocopy failed.
+    pause
+    exit /b 1
+)
+
+echo.
+echo Verifying destination...
+dir "%destFolder%"
+echo.
+
+echo [SUCCESS] Copy completed successfully.
+echo ============================================================
+pause
 exit /b 0
-
-
 
 :: ============================================================
 :: Configure SQL Server: enable TCP/IP on port 1433 and set the
