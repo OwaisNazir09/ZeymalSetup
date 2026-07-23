@@ -899,98 +899,86 @@ echo   [ OK  ] Zeymal.exe copied to %appFolder%\Zeymal.exe
 exit /b 0
 
 
-:: ============================================================
-:: Copy Zeymal files to Program Files folder (Fixed version)
-:: ============================================================
+
 :CopyToProgramFiles
 echo.
 echo ============================================================
-echo [10.5/14] Copying Zeymal files to Program Files...
+echo [10.5/14] DEBUG - CopyToProgramFiles
 echo ============================================================
 
 set "sourceFolder=%appFolder%\(Z_Replace_Base)"
 set "destFolder=%ProgramFiles(x86)%\Zeymal"
 
+echo.
 echo Source Folder      : "%sourceFolder%"
 echo Destination Folder : "%destFolder%"
 echo.
 
-:: Check if source exists (try alternative location if not)
-if not exist "%sourceFolder%" (
-    echo [WARN] Source folder not found: %sourceFolder%
-    echo Trying alternative: %appFolder%\files\(Z_Replace_Base)
-    set "sourceFolder=%appFolder%\files\(Z_Replace_Base)"
-)
-
-if not exist "%sourceFolder%" (
-    echo [ERROR] Source folder not found in either location!
-    echo Looking for any extracted folder...
-    dir /ad /b "%appFolder%"
-    dir /ad /b "%appFolder%\files"
+echo Checking source folder...
+if exist "%sourceFolder%" (
+    echo   [OK] Source folder exists.
+) else (
+    echo   [ERROR] Source folder DOES NOT EXIST!
+    dir "%sourceFolder%" 2>nul
+    pause
     exit /b 1
 )
 
-echo [ OK  ] Source folder exists: %sourceFolder%
+echo.
+echo Checking destination folder...
+if exist "%destFolder%" (
+    echo   [OK] Destination folder already exists.
+) else (
+    echo   [INFO] Destination folder does not exist.
+    echo   Creating "%destFolder%"...
+    mkdir "%destFolder%"
+    echo   mkdir Exit Code = %ERRORLEVEL%
 
-:: Create destination
-if not exist "%destFolder%" (
-    echo Creating "%destFolder%"...
-    mkdir "%destFolder%" 2>nul
     if errorlevel 1 (
-        echo [ERROR] Failed to create destination folder.
+        echo   [ERROR] Failed to create destination folder.
+        pause
         exit /b 1
     )
-    echo [ OK  ] Destination folder created.
-) else (
-    echo [ OK  ] Destination folder already exists.
+
+    echo   [OK] Destination folder created.
 )
 
-:: Copy files using robocopy
 echo.
-echo Copying files from "%sourceFolder%" to "%destFolder%"...
-echo ============================================================
+echo Listing source folder...
+dir "%sourceFolder%"
+echo.
 
-robocopy "%sourceFolder%" "%destFolder%" /E /COPY:DAT /R:3 /W:5 /NP /NFL
+echo ============================================================
+echo Starting ROBOCOPY...
+echo ============================================================
+echo robocopy "%sourceFolder%" "%destFolder%" /E /COPY:DAT /R:2 /W:2
+echo.
+
+robocopy "%sourceFolder%" "%destFolder%" /E /COPY:DAT /R:2 /W:2
 
 set "RC=%ERRORLEVEL%"
 
+echo.
+echo ============================================================
+echo ROBOCOPY FINISHED
 echo ============================================================
 echo Robocopy Exit Code : %RC%
 echo.
 
 if %RC% GEQ 8 (
-    echo [ERROR] Robocopy failed with error level %RC%
-    echo Errors occurred during copy.
+    echo [ERROR] Robocopy failed.
+    pause
     exit /b 1
-) else if %RC% GEQ 4 (
-    echo [WARN ] Some files may have been skipped (mismatch).
-    echo Check the output above for details.
-) else if %RC% LEQ 1 (
-    echo [ OK  ] Copy completed successfully.
-)
-
-:: Also ensure Zeymal.exe is in Program Files
-if exist "%appFolder%\Zeymal.exe" (
-    copy /Y "%appFolder%\Zeymal.exe" "%destFolder%\Zeymal.exe" >nul
-    if !errorlevel! equ 0 (
-        echo [ OK  ] Zeymal.exe copied to Program Files folder
-    )
-)
-
-:: Create shortcut on Desktop
-set "desktop=%USERPROFILE%\Desktop"
-if exist "%destFolder%\Zeymal.exe" (
-    echo Creating desktop shortcut...
-    powershell -NoProfile -Command "$WshShell = New-Object -comObject WScript.Shell; $Shortcut = $WshShell.CreateShortcut('%desktop%\Zeymal.lnk'); $Shortcut.TargetPath = '%destFolder%\Zeymal.exe'; $Shortcut.WorkingDirectory = '%destFolder%'; $Shortcut.Save()"
-    if !errorlevel! equ 0 (
-        echo [ OK  ] Desktop shortcut created
-    )
 )
 
 echo.
+echo Verifying destination...
+dir "%destFolder%"
+echo.
+
+echo [SUCCESS] Copy completed successfully.
 echo ============================================================
-echo [SUCCESS] Zeymal copied to Program Files
-echo ============================================================
+pause
 exit /b 0
 
 
