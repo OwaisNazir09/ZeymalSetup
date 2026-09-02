@@ -23,7 +23,7 @@ echo ============================================================
 echo   Zeymal Environment Setup
 echo ============================================================
 echo   This script will:
-echo     * Create the "postgres" (SQL admin) and "RT" (IIS/FTP) users
+echo     * Create the "RT" user (IIS/FTP and app account)
 echo     * Prepare application and download folders
 echo     * Install SQL Server Express (2022 on Win10/11, 2014 on Win7/8)
 echo     * Install Java Runtime Environment 8u271
@@ -35,12 +35,12 @@ echo ============================================================
 echo.
 
 :: ------------------------------------------------------------
-:: [1/14] Check administrator privileges
+:: [1/13] Check administrator privileges
 :: ------------------------------------------------------------
-echo [1/14] Checking administrator privileges...
+echo [1/13] Checking administrator privileges...
 net session >nul 2>&1
 if errorlevel 1 (
-    set "failStep=1/14 admin privileges check"
+    set "failStep=1/13 admin privileges check"
     echo   [ERROR] This script requires administrator privileges.
     echo           Right-click the script and choose "Run as administrator".
     goto :fatal
@@ -49,15 +49,15 @@ echo   [ OK  ] Running with administrator privileges.
 echo.
 
 :: ------------------------------------------------------------
-:: [2/14] Detect and validate Windows version
+:: [2/13] Detect and validate Windows version
 :: ------------------------------------------------------------
-echo [2/14] Detecting Windows version...
+echo [2/13] Detecting Windows version...
 for /f "delims=" %%A in ('powershell -NoProfile -Command "(Get-CimInstance Win32_OperatingSystem).Caption"') do set "windowsName=%%A"
 echo   Detected OS: %windowsName%
 
 echo %windowsName% | findstr /I /C:"Windows 7" /C:"Windows 8" /C:"Windows 10" /C:"Windows 11" >nul
 if errorlevel 1 (
-    set "failStep=2/14 Windows version detection"
+    set "failStep=2/13 Windows version detection"
     echo   [ERROR] Unsupported Windows version.
     echo           This installer supports Windows 7, 8, 10, and 11 only.
     goto :fatal
@@ -66,34 +66,25 @@ echo   [ OK  ] Supported Windows version detected.
 echo.
 
 :: ------------------------------------------------------------
-:: [3/14] Create the "postgres" user (used as SQL SA password holder)
+:: [3/13] Create the "RT" user (used by IIS/FTP and as app account)
 :: ------------------------------------------------------------
-echo [3/14] Configuring "postgres" user account...
-set "newUser=postgres"
-set "newPassword=362611"
-call :EnsureUser "%newUser%" "%newPassword%" "0"
-if !errorlevel! neq 0 ( set "failStep=3/14 create postgres user" & goto :fatal )
+echo [3/13] Configuring "RT" user account...
+set "newUser=RT"
+set "newPassword=master"
+set "sqlSaPassword=Zeymal@1034"
+call :EnsureUser "%newUser%" "%newPassword%" "1"
+if !errorlevel! neq 0 ( set "failStep=3/13 create RT user" & goto :fatal )
 echo.
 
 :: ------------------------------------------------------------
-:: [4/14] Create the "RT" user (used by IIS + FTP)
+:: [4/13] Create the application folder
 :: ------------------------------------------------------------
-echo [4/14] Configuring "RT" user account for IIS/FTP...
-set "rtUser=RT"
-set "rtPassword=master"
-call :EnsureUser "%rtUser%" "%rtPassword%" "1"
-if !errorlevel! neq 0 ( set "failStep=4/14 create RT user" & goto :fatal )
-echo.
-
-:: ------------------------------------------------------------
-:: [5/14] Create the application folder
-:: ------------------------------------------------------------
-echo [5/14] Preparing application folder...
+echo [4/13] Preparing application folder...
 set "appFolder=C:\Users\%newUser%\zeymal"
 if not exist "%appFolder%" (
     mkdir "%appFolder%"
     if !errorlevel! neq 0 (
-        set "failStep=5/14 create application folder"
+        set "failStep=4/13 create application folder"
         echo   [ERROR] Failed to create application folder.
         echo           Path: %appFolder%
         goto :fatal
@@ -106,14 +97,14 @@ echo   [NOTE ] The manual suggests using a non-C drive if available.
 echo.
 
 :: ------------------------------------------------------------
-:: [6/14] Create the Downloads folder
+:: [5/13] Create the Downloads folder
 :: ------------------------------------------------------------
-echo [6/14] Preparing Downloads folder...
+echo [5/13] Preparing Downloads folder...
 set "DownloadPath=C:\Users\%newUser%\Downloads"
 if not exist "%DownloadPath%" (
     mkdir "%DownloadPath%"
     if !errorlevel! neq 0 (
-        set "failStep=6/14 create Downloads folder"
+        set "failStep=5/13 create Downloads folder"
         echo   [ERROR] Failed to create Downloads folder.
         echo           Path: %DownloadPath%
         goto :fatal
@@ -125,20 +116,20 @@ if not exist "%DownloadPath%" (
 echo.
 
 :: ------------------------------------------------------------
-:: [7/14] Install SQL Server (edition depends on Windows version)
+:: [6/13] Install SQL Server (edition depends on Windows version)
 :: ------------------------------------------------------------
-echo [7/14] Installing SQL Server...
+echo [6/13] Installing SQL Server...
 echo %windowsName% | findstr /I /C:"Windows 11" /C:"Windows 10" >nul
 if not errorlevel 1 (
     call :InstallSqlModern
-    if !errorlevel! neq 0 ( set "failStep=7/14 SQL Server 2022 install" & goto :fatal )
+    if !errorlevel! neq 0 ( set "failStep=6/13 SQL Server 2022 install" & goto :fatal )
 ) else (
     echo %windowsName% | findstr /I /C:"Windows 7" /C:"Windows 8" >nul
     if not errorlevel 1 (
         call :InstallSqlLegacy
-        if !errorlevel! neq 0 ( set "failStep=7/14 SQL Server 2014 install" & goto :fatal )
+        if !errorlevel! neq 0 ( set "failStep=6/13 SQL Server 2014 install" & goto :fatal )
     ) else (
-        set "failStep=7/14 SQL Server install (unsupported Windows)"
+        set "failStep=6/13 SQL Server install (unsupported Windows)"
         echo   [ERROR] Unsupported Windows version for SQL Server install.
         goto :fatal
     )
@@ -146,9 +137,9 @@ if not errorlevel 1 (
 echo.
 
 :: ------------------------------------------------------------
-:: [8/14] Download Zeymal application files
+:: [7/13] Download Zeymal application files
 :: ------------------------------------------------------------
-echo [8/14] Downloading Zeymal application files...
+echo [7/13] Downloading Zeymal application files...
 call :DownloadZeymalFiles
 if !errorlevel! neq 0 (
     echo   [WARN ] Zeymal file download had issues.
@@ -161,9 +152,9 @@ if !errorlevel! neq 0 (
 echo.
 
 :: ------------------------------------------------------------
-:: [9/14] Install Java Runtime Environment 8u271
+:: [8/13] Install Java Runtime Environment 8u271
 :: ------------------------------------------------------------
-echo [9/14] Installing Java Runtime Environment 8u271...
+echo [8/13] Installing Java Runtime Environment 8u271...
 call :InstallJava
 if !errorlevel! neq 0 (
     echo   [WARN ] Java installation reported an error or was skipped.
@@ -174,9 +165,9 @@ if !errorlevel! neq 0 (
 )
 echo.
 :: ------------------------------------------------------------
-:: [10/14] Deploy files and install Zeymal application
+:: [9/13] Deploy files and install Zeymal application
 :: ------------------------------------------------------------
-echo [10/14] Deploying Zeymal application files...
+echo [9/13] Deploying Zeymal application files...
 call :DeployZeymalFiles
 if !errorlevel! neq 0 (
     echo   [WARN ] Deployment finished with warnings.
@@ -201,9 +192,9 @@ pause >nul
 echo.
 
 :: ------------------------------------------------------------
-:: [10.5/14] Copy Zeymal files to Program Files folder
+:: [9.5/13] Copy Zeymal files to Program Files folder
 :: ------------------------------------------------------------
-echo [10.5/14] Copying Zeymal files to C:\Program Files (x86)\Zeymal...
+echo [9.5/13] Copying Zeymal files to C:\Program Files (x86)\Zeymal...
 call :CopyToProgramFiles
 if !errorlevel! neq 0 (
     echo   [WARN ] Copy to Program Files had issues.
@@ -212,42 +203,42 @@ if !errorlevel! neq 0 (
 echo.
 
 :: ------------------------------------------------------------
-:: [11/14] Configure SQL Server (TCP/IP, port 1433, service LogOn)
+:: [10/13] Configure SQL Server (TCP/IP, port 1433, service LogOn)
 :: ------------------------------------------------------------
-echo [11/14] Configuring SQL Server networking and service...
+echo [10/13] Configuring SQL Server networking and service...
 call :ConfigureSqlServer
 echo.
 
 :: ------------------------------------------------------------
-:: [12/14] Enable IIS + FTP Windows features
+:: [11/13] Enable IIS + FTP Windows features
 :: ------------------------------------------------------------
-echo [12/14] Enabling IIS + FTP features...
+echo [11/13] Enabling IIS + FTP features...
 call :EnableIisFeatures
 echo.
 
 :: ------------------------------------------------------------
-:: [13/14] Configure IIS virtual directory and FTP site
+:: [12/13] Configure IIS virtual directory and FTP site
 :: ------------------------------------------------------------
-echo [13/14] Configuring IIS "RT" virtual directory and FTP site...
+echo [12/13] Configuring IIS "RT" virtual directory and FTP site...
 call :ConfigureIisSites
 echo.
 
 :: ------------------------------------------------------------
-:: [14/14] Restore Ashley database
+:: [13/13] Restore Ashley database
 :: ------------------------------------------------------------
-echo [14/14] Restoring Ashley database...
+echo [13/13] Restoring Ashley database...
 call :RestoreAshleyDb
 echo.
 
 echo ============================================================
 echo   Setup complete
 echo ============================================================
-echo   SQL admin user   : %newUser%   (SA password: %newPassword%)
-echo   IIS/FTP user     : %rtUser%    (password:   %rtPassword%)
+echo   User account     : %newUser%   (password: %newPassword%)
 echo   App folder       : %appFolder%
 echo   Files folder     : %appFolder%\files
 echo   Downloads        : %DownloadPath%
 echo   SQL instance     : .\SQLEXPRESS  (TCP 1433)
+echo   SQL SA password  : %sqlSaPassword%
 echo   IIS Virtual Dir  : http://localhost/RT
 echo   FTP site         : ftp://localhost/  (site name: RT)
 echo ============================================================
@@ -267,7 +258,7 @@ if defined needsReboot (
     echo.
     echo   After the machine reboots and you log back in, run
     echo   setup.bat AGAIN ^(as Administrator^). The earlier steps
-    echo   will detect existing state and skip; step [13/14] will
+    echo   will detect existing state and skip; step [12/13] will
     echo   then complete successfully.
     echo ============================================================
     echo.
@@ -473,7 +464,7 @@ echo   Do NOT close this window.
     /SQLSVCACCOUNT="NT Service\MSSQL$SQLEXPRESS" ^
     /SQLSYSADMINACCOUNTS="BUILTIN\ADMINISTRATORS" ^
     /SECURITYMODE=SQL ^
-    /SAPWD="%newPassword%" ^
+    /SAPWD="%sqlSaPassword%" ^
     /TCPENABLED=1 ^
     /NPENABLED=1 ^
     /UPDATEENABLED=False
@@ -556,7 +547,7 @@ echo   Do NOT close this window.
     /SQLSVCACCOUNT="NT AUTHORITY\Network Service" ^
     /SQLSYSADMINACCOUNTS="BUILTIN\ADMINISTRATORS" ^
     /SECURITYMODE=SQL ^
-    /SAPWD="%newPassword%" ^
+    /SAPWD="%sqlSaPassword%" ^
     /TCPENABLED=1
 set "SqlLegacyExit=!errorlevel!"
 echo   SQL Server setup exit code: !SqlLegacyExit!
@@ -857,7 +848,7 @@ exit /b 0
 :CopyToProgramFiles
 echo.
 echo ============================================================
-echo [10.5/14] DEBUG - CopyToProgramFiles
+echo [9.5/13] DEBUG - CopyToProgramFiles
 echo ============================================================
 
 set "sourceFolder=%appFolder%\(Z_Replace_Base)"
@@ -940,15 +931,6 @@ if !errorlevel! neq 0 (
 echo   Enabling TCP/IP and setting port 1433 via registry...
 powershell -NoProfile -Command "$root='HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server'; $inst = Get-ItemProperty -Path (Join-Path $root 'Instance Names\SQL') | Select-Object -ExpandProperty SQLEXPRESS -ErrorAction SilentlyContinue; if (-not $inst) { Write-Host '  [WARN ] Could not find SQLEXPRESS instance registry key.'; exit 0 }; $tcp = \"$root\$inst\MSSQLServer\SuperSocketNetLib\Tcp\"; Set-ItemProperty -Path $tcp -Name Enabled -Value 1 -ErrorAction SilentlyContinue; Set-ItemProperty -Path (Join-Path $tcp 'IPAll') -Name TcpPort -Value '1433' -ErrorAction SilentlyContinue; Set-ItemProperty -Path (Join-Path $tcp 'IPAll') -Name TcpDynamicPorts -Value '' -ErrorAction SilentlyContinue; Write-Host '  [ OK  ] Registry updated.'"
 
-echo   Setting SQL Server service to Local System account (with desktop interaction)...
-sc config "MSSQL$SQLEXPRESS" obj= "LocalSystem" type= own type= interact >nul 2>&1
-if !errorlevel! neq 0 (
-    echo   [WARN ] sc config for MSSQL$SQLEXPRESS failed. Check permissions.
-    call :ackWarn
-) else (
-    echo   [ OK  ] Service configured for Local System.
-)
-
 echo   Restarting SQL Server service...
 net stop "MSSQL$SQLEXPRESS" >nul 2>&1
 net start "MSSQL$SQLEXPRESS" >nul 2>&1
@@ -991,7 +973,7 @@ if not exist "%appcmd%" (
 
 echo   Creating virtual directory "RT" under Default Web Site...
 "%appcmd%" delete vdir "Default Web Site/RT" >nul 2>&1
-"%appcmd%" add vdir /app.name:"Default Web Site/" /path:"/RT" /physicalPath:"%appFolder%" /userName:"%rtUser%" /password:"%rtPassword%"
+"%appcmd%" add vdir /app.name:"Default Web Site/" /path:"/RT" /physicalPath:"%appFolder%" /userName:"%newUser%" /password:"%newPassword%"
 if !errorlevel! neq 0 (
     echo   [WARN ] Failed to create RT virtual directory.
     call :ackWarn
@@ -1017,9 +999,9 @@ if !errorlevel! neq 0 (
     "%appcmd%" set site "RT" /ftpServer.security.ssl.controlChannelPolicy:"SslAllow" /ftpServer.security.ssl.dataChannelPolicy:"SslAllow" >nul 2>&1
     "%appcmd%" set site "RT" /ftpServer.security.authentication.basicAuthentication.enabled:"true" >nul 2>&1
     "%appcmd%" set site "RT" /ftpServer.security.authentication.anonymousAuthentication.enabled:"false" >nul 2>&1
-    "%appcmd%" set config -section:system.ftpServer/security/authorization /+"[accessType='Allow',users='%rtUser%',permissions='Read,Write']" /commit:apphost >nul 2>&1
-    "%appcmd%" set vdir "RT/" /userName:"%rtUser%" /password:"%rtPassword%" >nul 2>&1
-    echo   [ OK  ] FTP site created and secured for user "%rtUser%".
+    "%appcmd%" set config -section:system.ftpServer/security/authorization /+"[accessType='Allow',users='%newUser%',permissions='Read,Write']" /commit:apphost >nul 2>&1
+    "%appcmd%" set vdir "RT/" /userName:"%newUser%" /password:"%newPassword%" >nul 2>&1
+    echo   [ OK  ] FTP site created and secured for user "%newUser%".
 )
 
 echo   Restarting Default Web Site and FTP site "RT"...
@@ -1088,8 +1070,16 @@ if !errorlevel! neq 0 (
 )
 
 echo   Restoring "Ashley" via sqlcmd ^(with WITH MOVE to this server's default data folder^)...
-sqlcmd -S .\SQLEXPRESS -U sa -P "%newPassword%" -C -b -Q "SET NOCOUNT ON; DECLARE @dataPath NVARCHAR(500)=ISNULL(CAST(SERVERPROPERTY('InstanceDefaultDataPath') AS NVARCHAR(500)),N'C:\'); DECLARE @logPath NVARCHAR(500)=ISNULL(CAST(SERVERPROPERTY('InstanceDefaultLogPath') AS NVARCHAR(500)),@dataPath); DECLARE @mdf NVARCHAR(500)=@dataPath+N'Ashley.mdf'; DECLARE @ldf NVARCHAR(500)=@logPath+N'Ashley_log.ldf'; RESTORE DATABASE [Ashley] FROM DISK=N'!bakFile!' WITH REPLACE, NOUNLOAD, STATS=10, MOVE N'Ashley' TO @mdf, MOVE N'Ashley_log' TO @ldf;"
-if !errorlevel! neq 0 (
+set "RESTORE_SQL=SET NOCOUNT ON; DECLARE @dataPath NVARCHAR(500)=ISNULL(CAST(SERVERPROPERTY('InstanceDefaultDataPath') AS NVARCHAR(500)),N'C:\'); DECLARE @logPath NVARCHAR(500)=ISNULL(CAST(SERVERPROPERTY('InstanceDefaultLogPath') AS NVARCHAR(500)),@dataPath); DECLARE @mdf NVARCHAR(500)=@dataPath+N'Ashley.mdf'; DECLARE @ldf NVARCHAR(500)=@logPath+N'Ashley_log.ldf'; RESTORE DATABASE [Ashley] FROM DISK=N'$(BAKPATH)' WITH REPLACE, NOUNLOAD, STATS=10, MOVE N'Ashley' TO @mdf, MOVE N'Ashley_log' TO @ldf;"
+sqlcmd -S .\SQLEXPRESS -U sa -P "%sqlSaPassword%" -C -b -v BAKPATH="!bakFile!" -Q "!RESTORE_SQL!"
+set "restoreRc=!errorlevel!"
+if !restoreRc! neq 0 (
+    echo   [INFO ] Retrying without -C flag ^(older sqlcmd^)...
+    sqlcmd -S .\SQLEXPRESS -U sa -P "%sqlSaPassword%" -b -v BAKPATH="!bakFile!" -Q "!RESTORE_SQL!"
+    set "restoreRc=!errorlevel!"
+)
+set "RESTORE_SQL="
+if !restoreRc! neq 0 (
     echo   [WARN ] RESTORE reported an error. You can restore manually from SSMS using WITH MOVE.
     call :ackWarn
 ) else (
