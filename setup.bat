@@ -946,14 +946,25 @@ if !errorlevel! neq 0 (
 echo   Enabling TCP/IP and setting port 1433 via registry...
 powershell -NoProfile -Command "$root='HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server'; $inst = Get-ItemProperty -Path (Join-Path $root 'Instance Names\SQL') | Select-Object -ExpandProperty SQLEXPRESS -ErrorAction SilentlyContinue; if (-not $inst) { Write-Host '  [WARN ] Could not find SQLEXPRESS instance registry key.'; exit 0 }; $tcp = \"$root\$inst\MSSQLServer\SuperSocketNetLib\Tcp\"; Set-ItemProperty -Path $tcp -Name Enabled -Value 1 -ErrorAction SilentlyContinue; Set-ItemProperty -Path (Join-Path $tcp 'IPAll') -Name TcpPort -Value '1433' -ErrorAction SilentlyContinue; Set-ItemProperty -Path (Join-Path $tcp 'IPAll') -Name TcpDynamicPorts -Value '' -ErrorAction SilentlyContinue; Write-Host '  [ OK  ] Registry updated.'"
 
-echo   Restarting SQL Server service...
+echo   Stopping SQL Server service to apply Log On changes...
 net stop "MSSQL$SQLEXPRESS" >nul 2>&1
-net start "MSSQL$SQLEXPRESS" >nul 2>&1
+
+echo   Setting SQL Server service Log On to Local System...
+sc config "MSSQL$SQLEXPRESS" obj= "LocalSystem" password= ""
 if !errorlevel! neq 0 (
-    echo   [WARN ] Failed to restart MSSQL$SQLEXPRESS. Restart manually.
+    echo   [WARN ] Failed to set service Log On to Local System. Check services.msc manually.
     call :ackWarn
 ) else (
-    echo   [ OK  ] SQL Server restarted with new settings.
+    echo   [ OK  ] Service Log On set to Local System.
+)
+
+echo   Starting SQL Server service...
+net start "MSSQL$SQLEXPRESS"
+if !errorlevel! neq 0 (
+    echo   [WARN ] Failed to start MSSQL$SQLEXPRESS. Start it manually via services.msc.
+    call :ackWarn
+) else (
+    echo   [ OK  ] SQL Server started.
 )
 exit /b 0
 
