@@ -118,7 +118,7 @@ echo.
 :: ------------------------------------------------------------
 :: [6/13] Install SQL Server (edition depends on Windows version)
 :: ------------------------------------------------------------
-echo [6/13] Installing SQL Server...
+echo [6/13] Installing SQL Server and SSMS...
 echo %windowsName% | findstr /I /C:"Windows 11" /C:"Windows 10" >nul
 if not errorlevel 1 (
     call :InstallSqlModern
@@ -134,6 +134,7 @@ if not errorlevel 1 (
         goto :fatal
     )
 )
+call :InstallSSMS
 echo.
 
 :: ------------------------------------------------------------
@@ -386,7 +387,7 @@ echo   --- SQL Server 2022 Express ---
 sc query "MSSQL$SQLEXPRESS" >nul 2>&1
 if !errorlevel! equ 0 (
     echo   [ OK  ] SQLEXPRESS instance already installed. Skipping engine install.
-    goto :InstallSqlModern_SSMS
+    exit /b 0
 )
 
 set "SqlBootstrap=%DownloadPath%\SQL2022-SSEI-Expr.exe"
@@ -478,48 +479,6 @@ if !SqlSetupExit! neq 0 (
     exit /b 1
 )
 echo   [ OK  ] SQL Server 2022 Express installed successfully.
-
-:InstallSqlModern_SSMS
-
-echo.
-echo   --- SQL Server Management Studio (SSMS) ---
-
-set "SsmsFound=0"
-
-reg query "HKLM\SOFTWARE\Microsoft\Microsoft SQL Server Management Studio" >nul 2>&1
-if !errorlevel! equ 0 set "SsmsFound=1"
-
-reg query "HKLM\SOFTWARE\WOW6432Node\Microsoft\Microsoft SQL Server Management Studio" >nul 2>&1
-if !errorlevel! equ 0 set "SsmsFound=1"
-
-for %%D in (18 19 20 21) do (
-    if exist "%ProgramFiles(x86)%\Microsoft SQL Server Management Studio %%D\Common7\IDE\Ssms.exe" set "SsmsFound=1"
-    if exist "%ProgramFiles%\Microsoft SQL Server Management Studio %%D\Common7\IDE\Ssms.exe"      set "SsmsFound=1"
-    if exist "%ProgramFiles%\Microsoft SQL Server Management Studio %%D\Release\Common7\IDE\Ssms.exe" set "SsmsFound=1"
-)
-
-if "!SsmsFound!"=="1" (
-    echo   [ OK  ] SSMS is already installed. Skipping download and install.
-    exit /b 0
-)
-
-set "SsmsInstaller=%DownloadPath%\SSMS-Setup-ENU.exe"
-call :Download "https://aka.ms/ssmsfullsetup" "%SsmsInstaller%" "SSMS"
-if !errorlevel! neq 0 (
-    echo   [WARN ] Failed to download SSMS.
-    echo           You can install it manually from https://aka.ms/ssmsfullsetup
-    call :ackWarn
-    exit /b 0
-)
-
-echo   Installing SSMS (silent)...
-"%SsmsInstaller%" /install /quiet /norestart
-if !errorlevel! neq 0 (
-    echo   [WARN ] SSMS installation reported an error. You can install it manually later.
-    call :ackWarn
-) else (
-    echo   [ OK  ] SSMS installed successfully.
-)
 exit /b 0
 
 
@@ -557,7 +516,63 @@ if !SqlLegacyExit! neq 0 (
     exit /b 1
 )
 echo   [ OK  ] SQL Server 2014 Express installed successfully.
-echo   [NOTE ] SSMS 2014 is not bundled here. Install it manually if needed.
+exit /b 0
+
+
+:: ============================================================
+:: Install SSMS - modern (Win10/11) or legacy 17.9.1 (Win7/8)
+:: ============================================================
+:InstallSSMS
+echo.
+echo   --- SQL Server Management Studio (SSMS) ---
+
+set "SsmsFound=0"
+
+reg query "HKLM\SOFTWARE\Microsoft\Microsoft SQL Server Management Studio" >nul 2>&1
+if !errorlevel! equ 0 set "SsmsFound=1"
+
+reg query "HKLM\SOFTWARE\WOW6432Node\Microsoft\Microsoft SQL Server Management Studio" >nul 2>&1
+if !errorlevel! equ 0 set "SsmsFound=1"
+
+for %%D in (17 18 19 20 21) do (
+    if exist "%ProgramFiles(x86)%\Microsoft SQL Server Management Studio %%D\Common7\IDE\Ssms.exe" set "SsmsFound=1"
+    if exist "%ProgramFiles%\Microsoft SQL Server Management Studio %%D\Common7\IDE\Ssms.exe"      set "SsmsFound=1"
+    if exist "%ProgramFiles%\Microsoft SQL Server Management Studio %%D\Release\Common7\IDE\Ssms.exe" set "SsmsFound=1"
+)
+
+if "!SsmsFound!"=="1" (
+    echo   [ OK  ] SSMS is already installed. Skipping.
+    exit /b 0
+)
+
+echo %windowsName% | findstr /I /C:"Windows 10" /C:"Windows 11" >nul
+if not errorlevel 1 (
+    set "SsmsUrl=https://aka.ms/ssmsfullsetup"
+    set "SsmsInstaller=%DownloadPath%\SSMS-Setup-ENU.exe"
+    echo   Downloading SSMS ^(latest^)...
+) else (
+    set "SsmsUrl=https://go.microsoft.com/fwlink/?linkid=2043154&clcid=0x409"
+    set "SsmsInstaller=%DownloadPath%\SSMS-Setup-17.exe"
+    echo   Downloading SSMS 17.9.1 ^(last version supporting Windows 7/8^)...
+)
+
+call :Download "!SsmsUrl!" "!SsmsInstaller!" "SSMS"
+if !errorlevel! neq 0 (
+    echo   [WARN ] Failed to download SSMS.
+    echo           Install it manually from: !SsmsUrl!
+    call :ackWarn
+    exit /b 0
+)
+
+echo   Installing SSMS ^(silent, this can take several minutes^)...
+echo   Do NOT close this window.
+"!SsmsInstaller!" /install /quiet /norestart
+if !errorlevel! neq 0 (
+    echo   [WARN ] SSMS installation reported an error. You can install it manually later.
+    call :ackWarn
+) else (
+    echo   [ OK  ] SSMS installed successfully.
+)
 exit /b 0
 
 
