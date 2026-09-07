@@ -1,0 +1,483 @@
+=====================================================================
+  ZEYMAL SETUP - FULL DETAILED REFERENCE
+  Every file, folder, setting, credential, and action explained
+=====================================================================
+
+
+=====================================================================
+  SECTION 1 - CREDENTIALS & PASSWORDS  (keep this safe)
+=====================================================================
+
+  Windows user account
+  --------------------
+  Username  : RT
+  Password  : master
+  Group     : Administrators
+  Setting   : Password never expires
+
+  SQL Server
+  ----------
+  Instance  : .\SQLEXPRESS   (also reachable as localhost\SQLEXPRESS)
+  SA login  : sa
+  SA pass   : Zeymal@1034
+  Mode      : SQL Server Authentication (mixed mode)
+  Port      : TCP 1433
+
+  IIS Virtual Directory
+  ---------------------
+  URL       : http://localhost/RT
+  User      : RT  /  master
+
+  FTP Site
+  --------
+  URL       : ftp://localhost/
+  Site name : RT
+  Port      : 21
+  User      : RT  /  master
+  Auth      : Basic Authentication (anonymous is disabled)
+  SSL       : SslAllow  (SSL allowed but not required)
+
+  Zeymal Application (after manual install)
+  -----------------------------------------
+  Default login  : admin / admin
+
+
+=====================================================================
+  SECTION 2 - FOLDERS CREATED
+=====================================================================
+
+  C:\Users\RT\
+      The home folder of the RT user account.
+      Everything Zeymal-related lives under here.
+
+  C:\Users\RT\zeymal\
+      Main application folder.
+      All Zeymal files, configs, and extracted zips land here.
+      Called "appFolder" inside the script.
+
+  C:\Users\RT\zeymal\files\
+      Staging/downloads folder.
+      The 4 zip files downloaded from the Zeymal server are saved here
+      and stay here permanently so re-runs can skip re-downloading.
+
+  C:\Users\RT\zeymal\files\jre_extract\
+      Temporary extraction folder for the Java installer zip.
+      The actual Java installer exe is pulled out of here before running.
+
+  C:\Users\RT\zeymal\files\ashley_restore\
+      Temporary extraction folder for the Ashley database backup zip.
+      The .bak file is pulled out of here for the SQL restore.
+
+  C:\Users\RT\Downloads\
+      Staging folder for large third-party installers
+      (SQL Server bootstrapper, SQL media, SSMS installer).
+      Called "DownloadPath" inside the script.
+
+  C:\Users\RT\Downloads\SQLMedia\
+      Where the SQL Server 2022 media (~280 MB) is downloaded and kept.
+
+  C:\Users\RT\Downloads\SQLMedia\extract\
+      Where the SQL Server media is extracted before running setup.exe.
+
+  C:\Program Files (x86)\Zeymal\
+      Final install destination for Zeymal core files.
+      The contents of (Z_Replace_Base) folder are copied here
+      using robocopy after the manual Zeymal installer runs.
+
+
+=====================================================================
+  SECTION 3 - FILES DOWNLOADED AND WHERE THEY GO
+=====================================================================
+
+  All Zeymal files come from:
+      https://zml-installer.blr1.digitaloceanspaces.com/
+
+  ---------------------------------------------------------------
+  FILE 1: (Z_Replace_Base).zip
+  ---------------------------------------------------------------
+  Downloaded to : C:\Users\RT\zeymal\files\(Z_Replace_Base).zip
+  Extracted to  : C:\Users\RT\zeymal\(Z_Replace_Base)\
+  Then copied   : C:\Users\RT\zeymal\(Z_Replace_Base)\
+                  --> C:\Program Files (x86)\Zeymal\  (robocopy)
+  Contents      : Core Zeymal application files that replace
+                  the default install (configs, libraries, etc.)
+  Skip logic    : If zip already exists and is >= 10 KB, skipped.
+  Extract skip  : A marker file "(Z_Replace_Base).zip.extracted"
+                  is created next to the zip after extraction.
+                  If that marker exists, extraction is skipped.
+
+  ---------------------------------------------------------------
+  FILE 2: jre-8u271-windows-i586-iftw.zip
+  ---------------------------------------------------------------
+  Downloaded to : C:\Users\RT\zeymal\files\jre-8u271-windows-i586-iftw.zip
+  Extracted to  : C:\Users\RT\zeymal\files\jre_extract\
+  Installer exe : C:\Users\RT\zeymal\files\jre_extract\
+                      jre-8u271-windows-i586-iftw.exe
+  Copy of exe   : C:\Users\RT\zeymal\jre-8u271-windows-i586-iftw.exe
+                  (a copy is placed in the app folder for reference)
+  Purpose       : Java Runtime Environment 8 update 271 (32-bit).
+                  Zeymal is a Java application and requires Java 8.
+  Install flags : /s AUTO_UPDATE=Disable STATIC=1 REBOOT=Disable
+                  EULA=Disable NOSTARTMENU=Enable WEB_ANALYTICS=Disable
+                  (silent install, no start menu, no auto update)
+
+  ---------------------------------------------------------------
+  FILE 3: Zeymal.zip
+  ---------------------------------------------------------------
+  Downloaded to : C:\Users\RT\zeymal\files\Zeymal.zip
+  Extracted to  : C:\Users\RT\zeymal\
+  Key file out  : C:\Users\RT\zeymal\Zeymal.exe
+                  (the Zeymal application installer)
+  Purpose       : The main Zeymal program package.
+                  After extraction you manually run Zeymal.exe
+                  to complete the Zeymal installation wizard.
+
+  ---------------------------------------------------------------
+  FILE 4: Z_Reset_1034.zip
+  ---------------------------------------------------------------
+  Downloaded to : C:\Users\RT\zeymal\files\Z_Reset_1034.zip
+  Extracted to  : C:\Users\RT\zeymal\files\ashley_restore\
+  Backup file   : A .bak file inside that folder (SQL Server backup).
+                  If the file has no extension, the script checks
+                  for a TAPE header and renames it to Ashley.bak.
+  Purpose       : SQL Server database backup for the Ashley database.
+                  Restored into SQL Server in the final step.
+
+  ---------------------------------------------------------------
+  INSTALLER FILES (downloaded to C:\Users\RT\Downloads\)
+  ---------------------------------------------------------------
+
+  SQL2022-SSEI-Expr.exe
+      SQL Server 2022 Express bootstrapper (small, ~5 MB).
+      Used only to download the full media package.
+      Source: go.microsoft.com/fwlink/p/?linkid=2216019...
+
+  C:\Users\RT\Downloads\SQLMedia\SQLEXPR_x64_ENU.exe
+      Full SQL Server 2022 Express media package (~280 MB).
+      Downloaded by the bootstrapper above.
+      Extracted to: C:\Users\RT\Downloads\SQLMedia\extract\
+
+  C:\Users\RT\Downloads\SQLMedia\extract\setup.exe
+      The actual SQL Server installer, run silently.
+
+  SQLEXPRWT.exe   (Windows 7/8 only)
+      SQL Server 2014 Express with Tools, single-file installer.
+      Source: download.microsoft.com (Microsoft official)
+
+  SSMS-Setup-ENU.exe   (Windows 10/11)
+      Latest SQL Server Management Studio installer.
+      Source: aka.ms/ssmsfullsetup
+
+  SSMS-Setup-17.exe   (Windows 7/8)
+      SSMS version 17.9.1 - last version supporting Windows 7/8.
+      Source: go.microsoft.com/fwlink/?linkid=2043154
+
+
+=====================================================================
+  SECTION 4 - SQL SERVER INSTALLATION DETAILS
+=====================================================================
+
+  Windows 10 / 11
+  ---------------
+  Product       : SQL Server 2022 Express
+  Instance name : SQLEXPRESS
+  Service name  : MSSQL$SQLEXPRESS
+  Features      : SQLENGINE only (database engine, no SSRS/SSIS)
+  Service acct  : NT Service\MSSQL$SQLEXPRESS  (during install)
+                  Changed to LocalSystem after install (step 10)
+  SA password   : Zeymal@1034
+  TCP/IP        : Enabled  (flag /TCPENABLED=1)
+  Named Pipes   : Enabled  (flag /NPENABLED=1)
+  Auth mode     : Mixed (SQL + Windows)  (/SECURITYMODE=SQL)
+  Auto update   : Disabled  (/UPDATEENABLED=False)
+  Windows admins: BUILTIN\Administrators are SQL sysadmins
+  Setup logs    : %ProgramFiles%\Microsoft SQL Server\
+                      160\Setup Bootstrap\Log
+
+  Windows 7 / 8
+  -------------
+  Product       : SQL Server 2014 Express with Tools
+  Instance name : SQLEXPRESS
+  Service acct  : NT AUTHORITY\Network Service  (during install)
+                  Changed to LocalSystem after install (step 10)
+  SA password   : Zeymal@1034
+  TCP/IP        : Enabled
+  Auth mode     : Mixed
+
+  SQL Server Management Studio (SSMS)
+  ------------------------------------
+  Windows 10/11 : Latest version from aka.ms/ssmsfullsetup
+  Windows 7/8   : Version 17.9.1 (last supported on those OS)
+  Install mode  : /install /quiet /norestart  (silent, no reboot)
+  Already-installed detection checks:
+    - Registry: HKLM\SOFTWARE\Microsoft\Microsoft SQL Server
+                Management Studio
+    - Registry: HKLM\SOFTWARE\WOW6432Node\Microsoft\...
+    - Folders : Program Files\Microsoft SQL Server Management
+                Studio 17 through 21\Common7\IDE\Ssms.exe
+
+
+=====================================================================
+  SECTION 5 - SQL SERVER CONFIGURATION (Step 10)
+=====================================================================
+
+  TCP/IP on port 1433
+  -------------------
+  Done via PowerShell writing to registry:
+    HKLM\SOFTWARE\Microsoft\Microsoft SQL Server
+      \<instance key>\MSSQLServer\SuperSocketNetLib\Tcp\
+        Enabled        = 1
+      \IPAll\
+        TcpPort        = 1433
+        TcpDynamicPorts= ""  (blank = use static port, not dynamic)
+
+  Service Log On changed to Local System
+  ----------------------------------------
+  Command: sc config "MSSQL$SQLEXPRESS" obj= "LocalSystem" password= ""
+  This sets the SQL Server service to run as the built-in
+  Local System account, which has full access to the machine.
+  The service is stopped first, then the account is changed,
+  then the service is started fresh under the new account.
+
+  Firewall Rule
+  -------------
+  Rule name  : SQL Server TCP 1433
+  Direction  : Inbound
+  Protocol   : TCP
+  Local port : 1433
+  Action     : Allow
+  Command    : netsh advfirewall firewall add rule ...
+  Note       : Any existing rule with the same name is deleted
+               first so re-running the script never creates duplicates.
+
+
+=====================================================================
+  SECTION 6 - IIS INSTALLATION (Step 11)
+=====================================================================
+
+  The following Windows Features are enabled via PowerShell
+  (Enable-WindowsOptionalFeature -Online):
+
+    IIS-WebServerRole
+    IIS-WebServer
+    IIS-CommonHttpFeatures
+    IIS-DefaultDocument
+    IIS-DirectoryBrowsing
+    IIS-HttpErrors
+    IIS-StaticContent
+    IIS-HttpRedirect
+    IIS-ApplicationDevelopment
+    IIS-NetFxExtensibility45
+    IIS-ISAPIExtensions
+    IIS-ISAPIFilter
+    IIS-ASPNET45
+    IIS-HealthAndDiagnostics
+    IIS-HttpLogging
+    IIS-Security
+    IIS-RequestFiltering
+    IIS-BasicAuthentication
+    IIS-Performance
+    IIS-WebServerManagementTools
+    IIS-ManagementConsole
+    IIS-ManagementScriptingTools
+    IIS-FTPServer
+    IIS-FTPSvc
+    IIS-FTPExtensibility
+
+  NOTE: After enabling these features Windows may need a reboot
+  before appcmd.exe (the IIS config tool) becomes available.
+  If setup detects appcmd.exe is missing it schedules a reboot
+  and tells you to re-run setup.bat after logging back in.
+  appcmd.exe location: C:\Windows\system32\inetsrv\appcmd.exe
+
+
+=====================================================================
+  SECTION 7 - IIS VIRTUAL DIRECTORY CONFIGURATION (Step 12)
+=====================================================================
+
+  Virtual Directory "RT" under Default Web Site
+  -----------------------------------------------
+  Site        : Default Web Site
+  Path        : /RT
+  Physical    : C:\Users\RT\zeymal\
+  Username    : RT
+  Password    : master
+  URL         : http://localhost/RT
+
+  MIME type added
+  ---------------
+  Extension   : .  (a dot with no extension)
+  MIME type   : application/octet-stream
+  Scope       : Default Web Site/RT
+  Reason      : Zeymal serves files with no extension; IIS blocks
+                them by default. This MIME type allows them through.
+
+  appcmd commands used:
+    appcmd delete vdir "Default Web Site/RT"    (cleanup before recreate)
+    appcmd add vdir /app.name:"Default Web Site/" /path:"/RT"
+              /physicalPath:"C:\Users\RT\zeymal"
+              /userName:"RT" /password:"master"
+    appcmd set config "Default Web Site/RT" -section:staticContent
+              /+"[fileExtension='.',mimeType='application/octet-stream']"
+
+
+=====================================================================
+  SECTION 8 - FTP SITE CONFIGURATION (Step 12)
+=====================================================================
+
+  FTP Site "RT"
+  -------------
+  Site name   : RT
+  Physical    : C:\Users\RT\zeymal\
+  Binding     : ftp/*:21:   (all IPs, port 21, no hostname)
+  Auth        : Basic Authentication = enabled
+                Anonymous Authentication = disabled
+  SSL control : SslAllow  (SSL optional on control channel)
+  SSL data    : SslAllow  (SSL optional on data channel)
+  Authorization: User "RT" has Read + Write access
+  Virtual dir : RT/  uses username RT / password master
+
+  appcmd commands used:
+    appcmd delete site "RT"    (cleanup before recreate)
+    appcmd add site /name:"RT" /physicalPath:"C:\Users\RT\zeymal"
+                    /bindings:"ftp/*:21:"
+    appcmd set site "RT" /ftpServer.security.ssl...
+    appcmd set site "RT" /ftpServer.security.authentication...
+    appcmd set config -section:system.ftpServer/security/authorization
+              /+"[accessType='Allow',users='RT',permissions='Read,Write']"
+    appcmd set vdir "RT/" /userName:"RT" /password:"master"
+
+  FTP Firewall Rules
+  ------------------
+  1. Built-in group enabled:
+       netsh advfirewall firewall set rule group="FTP Server" new enable=yes
+       This enables Windows' predefined program-based FTP Server rules
+       (allows svchost.exe hosting the ftpsvc service through the firewall).
+
+  2. Explicit port rule added:
+       Rule name  : IIS FTP Server (TCP 21)
+       Direction  : Inbound
+       Protocol   : TCP
+       Local port : 21
+       Action     : Allow
+
+
+=====================================================================
+  SECTION 9 - ASHLEY DATABASE RESTORE (Step 13)
+=====================================================================
+
+  Source zip   : C:\Users\RT\zeymal\files\Z_Reset_1034.zip
+  Extract dir  : C:\Users\RT\zeymal\files\ashley_restore\
+  Backup file  : <first .bak file found in extract dir>
+                 If no .bak extension, checks for TAPE header bytes
+                 (54 41 50 45) and renames the file to Ashley.bak.
+
+  Restore runs via sqlcmd:
+    Server     : .\SQLEXPRESS
+    Login      : sa  /  Zeymal@1034
+    Database   : Ashley  (created fresh)
+    Files moved to server's default data path:
+      MDF  -->  <InstanceDefaultDataPath>\Ashley.mdf
+      LDF  -->  <InstanceDefaultLogPath>\Ashley_log.ldf
+    SQL used   : RESTORE DATABASE [Ashley] FROM DISK=N'<bakFile>'
+                 WITH REPLACE, NOUNLOAD, STATS=10,
+                 MOVE N'Ashley' TO <mdf path>,
+                 MOVE N'Ashley_log' TO <ldf path>
+
+  Note: WITH MOVE is required because the backup was created on a
+  different machine with different file paths. Without WITH MOVE,
+  SQL Server returns error 3156.
+
+  sqlcmd -C flag: Trusts the server certificate (needed for SQL 2022).
+  If the flag is not supported by an older sqlcmd, the script
+  automatically retries without -C.
+
+  If sqlcmd is not found on PATH, the step is skipped with
+  instructions to restore manually via SSMS.
+
+
+=====================================================================
+  SECTION 10 - FILE PLACEMENT SUMMARY (quick reference)
+=====================================================================
+
+  SOURCE (downloaded/extracted)           DESTINATION
+  ----------------------------------------+---------------------------
+  Zeymal server / Zeymal.zip             --> C:\Users\RT\zeymal\
+    Zeymal.exe (installer)                   C:\Users\RT\zeymal\Zeymal.exe
+    (other Zeymal program files)             C:\Users\RT\zeymal\*
+
+  Zeymal server / (Z_Replace_Base).zip   --> C:\Users\RT\zeymal\(Z_Replace_Base)\
+    (then robocopy'd to)                 --> C:\Program Files (x86)\Zeymal\
+
+  Zeymal server / jre-8u271-....zip      --> C:\Users\RT\zeymal\files\jre_extract\
+    jre-8u271-windows-i586-iftw.exe      --> C:\Users\RT\zeymal\   (copy)
+    (also installed system-wide silently)
+
+  Zeymal server / Z_Reset_1034.zip       --> C:\Users\RT\zeymal\files\ashley_restore\
+    Ashley.bak                           --> restored into SQL Server as [Ashley]
+
+  SQL 2022 bootstrapper                  --> C:\Users\RT\Downloads\SQL2022-SSEI-Expr.exe
+  SQL 2022 media (SQLEXPR_x64_ENU.exe)  --> C:\Users\RT\Downloads\SQLMedia\
+  SQL 2022 extracted setup.exe           --> C:\Users\RT\Downloads\SQLMedia\extract\
+  SQL 2022 installed engine              --> C:\Program Files\Microsoft SQL Server\
+
+  SSMS installer (Win10/11)              --> C:\Users\RT\Downloads\SSMS-Setup-ENU.exe
+  SSMS installer (Win7/8)               --> C:\Users\RT\Downloads\SSMS-Setup-17.exe
+  SSMS installed                         --> C:\Program Files (x86)\Microsoft SQL Server
+                                              Management Studio <version>\
+
+
+=====================================================================
+  SECTION 11 - WHAT YOU DO MANUALLY (in order)
+=====================================================================
+
+  During the script:
+  ------------------
+  1. When the script pauses and asks, run:
+         C:\Users\RT\zeymal\Zeymal.exe
+     Complete the Zeymal installation wizard.
+     Press any key in the setup window when done.
+
+  After the script finishes:
+  --------------------------
+  2. Open the Zeymal application.
+  3. Go to:  File > Zeymal Signature
+     Copy the signature text.
+  4. Send the signature to your vendor/licenser to get a license file.
+  5. Once you receive the license file, go to:
+         File > Zeymal Configuration > Load Config
+     and load the license file.
+  6. Restart Zeymal.
+  7. Log in with:   admin / admin
+
+
+=====================================================================
+  SECTION 12 - IF SOMETHING FAILS
+=====================================================================
+
+  The setup window never closes automatically.
+  Scroll up in the window to see the exact error message.
+
+  Re-running setup.bat is SAFE.
+  The script checks before every action:
+    - User already exists?  --> skips user creation
+    - SQL already installed? --> skips SQL install
+    - File already downloaded (>= 10 KB)? --> skips download
+    - Zip already extracted (marker file exists)? --> skips extract
+    - SSMS already installed? --> skips SSMS install
+
+  If IIS tools are not available (appcmd.exe missing):
+    The script will tell you to reboot.
+    After rebooting and logging back in, run setup.bat again.
+    All already-done steps will be skipped automatically.
+    Step 12 (IIS/FTP config) will then complete.
+
+  SQL restore fails?
+    Open SSMS, connect to .\SQLEXPRESS with sa / Zeymal@1034
+    Right-click Databases > Restore Database
+    Choose Device > add the .bak file from:
+        C:\Users\RT\zeymal\files\ashley_restore\
+    Go to Options tab > check "Relocate all files to folder"
+    Click OK.
+
+=====================================================================

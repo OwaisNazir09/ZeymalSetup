@@ -946,6 +946,16 @@ if !errorlevel! neq 0 (
 echo   Enabling TCP/IP and setting port 1433 via registry...
 powershell -NoProfile -Command "$root='HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server'; $inst = Get-ItemProperty -Path (Join-Path $root 'Instance Names\SQL') | Select-Object -ExpandProperty SQLEXPRESS -ErrorAction SilentlyContinue; if (-not $inst) { Write-Host '  [WARN ] Could not find SQLEXPRESS instance registry key.'; exit 0 }; $tcp = \"$root\$inst\MSSQLServer\SuperSocketNetLib\Tcp\"; Set-ItemProperty -Path $tcp -Name Enabled -Value 1 -ErrorAction SilentlyContinue; Set-ItemProperty -Path (Join-Path $tcp 'IPAll') -Name TcpPort -Value '1433' -ErrorAction SilentlyContinue; Set-ItemProperty -Path (Join-Path $tcp 'IPAll') -Name TcpDynamicPorts -Value '' -ErrorAction SilentlyContinue; Write-Host '  [ OK  ] Registry updated.'"
 
+echo   Adding Windows Firewall inbound rule for SQL Server TCP 1433...
+netsh advfirewall firewall delete rule name="SQL Server TCP 1433" >nul 2>&1
+netsh advfirewall firewall add rule name="SQL Server TCP 1433" protocol=TCP dir=in localport=1433 action=allow
+if !errorlevel! neq 0 (
+    echo   [WARN ] Failed to add firewall rule. Add it manually in Windows Firewall.
+    call :ackWarn
+) else (
+    echo   [ OK  ] Firewall rule added: TCP inbound port 1433.
+)
+
 echo   Stopping SQL Server service to apply Log On changes...
 net stop "MSSQL$SQLEXPRESS" >nul 2>&1
 
@@ -1036,6 +1046,17 @@ echo   Restarting Default Web Site and FTP site "RT"...
 "%appcmd%" stop  site "RT" >nul 2>&1
 "%appcmd%" start site "RT" >nul 2>&1
 echo   [ OK  ] IIS sites restarted.
+
+echo   Allowing FTP Server through Windows Firewall...
+netsh advfirewall firewall set rule group="FTP Server" new enable=yes >nul 2>&1
+netsh advfirewall firewall delete rule name="IIS FTP Server (TCP 21)" >nul 2>&1
+netsh advfirewall firewall add rule name="IIS FTP Server (TCP 21)" protocol=TCP dir=in localport=21 action=allow
+if !errorlevel! neq 0 (
+    echo   [WARN ] Failed to add FTP firewall rule. Add it manually in Windows Firewall.
+    call :ackWarn
+) else (
+    echo   [ OK  ] Firewall: FTP Server program group enabled, TCP inbound port 21 allowed.
+)
 exit /b 0
 
 
