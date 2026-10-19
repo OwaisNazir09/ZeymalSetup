@@ -1116,8 +1116,30 @@ if !errorlevel! neq 0 (
     exit /b 0
 )
 
+:: Never overwrite a school's data. setup.bat is meant to be run again after a reboot, and step 13
+:: runs every time, so an existing [Ashley] database is left exactly as it is. If the check itself
+:: gets no answer, nothing is restored either: better to stop than to guess.
+set "dbExists="
+set "DB_CHECK=SET NOCOUNT ON; SELECT CASE WHEN DB_ID(N'Ashley') IS NULL THEN 'NO' ELSE 'YES' END"
+for /f "usebackq delims=" %%R in (`sqlcmd -S .\SQLEXPRESS -U sa -P "%sqlSaPassword%" -C -h -1 -W -b -Q "%DB_CHECK%" 2^>nul`) do set "dbExists=%%R"
+if not defined dbExists for /f "usebackq delims=" %%R in (`sqlcmd -S .\SQLEXPRESS -U sa -P "%sqlSaPassword%" -h -1 -W -b -Q "%DB_CHECK%" 2^>nul`) do set "dbExists=%%R"
+set "DB_CHECK="
+if /i "!dbExists!"=="YES" (
+    echo   [SKIP ] The "Ashley" database already exists on .\SQLEXPRESS - it was NOT restored.
+    echo           A re-run never overwrites a school's data. To start over on purpose, drop
+    echo           the database first ^(SSMS^), then run setup.bat again.
+    exit /b 0
+)
+if /i not "!dbExists!"=="NO" (
+    echo   [WARN ] Could not check whether the "Ashley" database exists, so it was NOT restored.
+    echo           Make sure SQL Server ^(MSSQL$SQLEXPRESS^) is running and the sa password is right,
+    echo           then run setup.bat again.
+    call :ackWarn
+    exit /b 0
+)
+
 echo   Restoring "Ashley" via sqlcmd ^(with WITH MOVE to this server's default data folder^)...
-set "RESTORE_SQL=SET NOCOUNT ON; DECLARE @dataPath NVARCHAR(500)=ISNULL(CAST(SERVERPROPERTY('InstanceDefaultDataPath') AS NVARCHAR(500)),N'C:\'); DECLARE @logPath NVARCHAR(500)=ISNULL(CAST(SERVERPROPERTY('InstanceDefaultLogPath') AS NVARCHAR(500)),@dataPath); DECLARE @mdf NVARCHAR(500)=@dataPath+N'Ashley.mdf'; DECLARE @ldf NVARCHAR(500)=@logPath+N'Ashley_log.ldf'; RESTORE DATABASE [Ashley] FROM DISK=N'$(BAKPATH)' WITH REPLACE, NOUNLOAD, STATS=10, MOVE N'Ashley' TO @mdf, MOVE N'Ashley_log' TO @ldf;"
+set "RESTORE_SQL=SET NOCOUNT ON; DECLARE @dataPath NVARCHAR(500)=ISNULL(CAST(SERVERPROPERTY('InstanceDefaultDataPath') AS NVARCHAR(500)),N'C:\'); DECLARE @logPath NVARCHAR(500)=ISNULL(CAST(SERVERPROPERTY('InstanceDefaultLogPath') AS NVARCHAR(500)),@dataPath); DECLARE @mdf NVARCHAR(500)=@dataPath+N'Ashley.mdf'; DECLARE @ldf NVARCHAR(500)=@logPath+N'Ashley_log.ldf'; RESTORE DATABASE [Ashley] FROM DISK=N'$(BAKPATH)' WITH NOUNLOAD, STATS=10, MOVE N'Ashley' TO @mdf, MOVE N'Ashley_log' TO @ldf;"
 sqlcmd -S .\SQLEXPRESS -U sa -P "%sqlSaPassword%" -C -b -v BAKPATH="!bakFile!" -Q "!RESTORE_SQL!"
 set "restoreRc=!errorlevel!"
 if !restoreRc! neq 0 (
