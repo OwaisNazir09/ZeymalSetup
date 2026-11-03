@@ -14,6 +14,8 @@ if /I not "%~1"=="__keepopen__" (
 shift
 setlocal enabledelayedexpansion
 title Zeymal Environment Setup
+:: Setup's own state (chosen folders, finished steps), so a re-run picks up where the last one left off.
+set "setupRegKey=HKLM\SOFTWARE\RationalTabs\ZeymalSetup"
 
 :: ============================================================
 ::  Zeymal Environment Setup
@@ -24,13 +26,14 @@ echo   Zeymal Environment Setup
 echo ============================================================
 echo   This script will:
 echo     * Create the "RT" user (IIS/FTP and app account)
-echo     * Prepare application and download folders
+echo     * Prepare application and download folders (off the system drive if possible)
 echo     * Install SQL Server Express (2022 on Win10/11, 2014 on Win7/8)
 echo     * Install Java Runtime Environment 8u271
 echo     * Download and deploy the Zeymal application files
 echo     * Configure SQL Server (TCP/IP, port 1433)
 echo     * Install IIS + FTP and configure the RT site
 echo     * Restore the Ashley database
+echo     * Delete the downloads once they are installed
 echo ============================================================
 echo.
 
@@ -69,50 +72,46 @@ echo.
 :: [3/13] Create the "RT" user (used by IIS/FTP and as app account)
 :: ------------------------------------------------------------
 echo [3/13] Configuring "RT" user account...
+:: RT's password includes the year of the first run (masterYY). The year is saved, so a re-run,
+:: even in a later year, expects the same password.
+call :RegGet PasswordYear pwYear
+if not defined pwYear for /f %%Y in ('powershell -NoProfile -Command "(Get-Date).Year"') do set "pwYear=%%Y"
+call :RegSet PasswordYear "!pwYear!"
 set "newUser=RT"
-set "newPassword=master"
-set "sqlSaPassword=Zeymal@1034"
+set "newPassword=master!pwYear:~-2!"
 call :EnsureUser "%newUser%" "%newPassword%" "1"
 if !errorlevel! neq 0 ( set "failStep=3/13 create RT user" & goto :fatal )
+:: How setup signs in to SQL Server: Windows authentication until it knows a working sa password.
+set "SQLAUTH=-E"
+call :AskSaPassword
+if !errorlevel! neq 0 ( set "failStep=3/13 choose the sa password" & goto :fatal )
+call :SqlSignIn
 echo.
 
 :: ------------------------------------------------------------
-:: [4/13] Create the application folder
+:: [4/13] Choose and create the application folder
 :: ------------------------------------------------------------
 echo [4/13] Preparing application folder...
-set "appFolder=C:\Users\%newUser%\zeymal"
-if not exist "%appFolder%" (
-    mkdir "%appFolder%"
-    if !errorlevel! neq 0 (
-        set "failStep=4/13 create application folder"
-        echo   [ERROR] Failed to create application folder.
-        echo           Path: %appFolder%
-        goto :fatal
-    )
-    echo   [ OK  ] Created: %appFolder%
-) else (
-    echo   [ OK  ] Already exists: %appFolder%
-)
-echo   [NOTE ] The manual suggests using a non-C drive if available.
+:: Where the old script put everything; only used to reuse or clear what it left behind.
+set "legacyApp=%SystemDrive%\Users\%newUser%\zeymal"
+set "legacyFiles=%legacyApp%\files"
+set "legacyDownloads=%SystemDrive%\Users\%newUser%\Downloads"
+call :ChooseFolders
+if !errorlevel! neq 0 ( set "failStep=4/13 choose application folder" & goto :fatal )
+call :PrepareFolder "!appFolder!" "%newUser%"
+if !errorlevel! neq 0 ( set "failStep=4/13 create application folder" & goto :fatal )
 echo.
 
 :: ------------------------------------------------------------
 :: [5/13] Create the Downloads folder
 :: ------------------------------------------------------------
 echo [5/13] Preparing Downloads folder...
-set "DownloadPath=C:\Users\%newUser%\Downloads"
-if not exist "%DownloadPath%" (
-    mkdir "%DownloadPath%"
-    if !errorlevel! neq 0 (
-        set "failStep=5/13 create Downloads folder"
-        echo   [ERROR] Failed to create Downloads folder.
-        echo           Path: %DownloadPath%
-        goto :fatal
-    )
-    echo   [ OK  ] Created: %DownloadPath%
-) else (
-    echo   [ OK  ] Already exists: %DownloadPath%
-)
+set "ZeymalFiles=%DownloadPath%\files"
+call :PrepareFolder "!DownloadPath!"
+if !errorlevel! neq 0 ( set "failStep=5/13 create Downloads folder" & goto :fatal )
+call :PrepareFolder "!ZeymalFiles!"
+if !errorlevel! neq 0 ( set "failStep=5/13 create Downloads folder" & goto :fatal )
+echo   [NOTE ] Each download is deleted once what it installs is in place.
 echo.
 
 :: ------------------------------------------------------------
@@ -146,7 +145,7 @@ if !errorlevel! neq 0 (
     echo   [WARN ] Zeymal file download had issues.
     echo           You can complete this manually:
     echo             Source URL : %ZeymalBaseUrl%
-    echo             Target dir : %appFolder%\files
+    echo             Target dir : %ZeymalFiles%
     echo           Continuing so the rest of the setup can run.
     call :ackWarn
 )
@@ -160,7 +159,7 @@ call :InstallJava
 if !errorlevel! neq 0 (
     echo   [WARN ] Java installation reported an error or was skipped.
     echo           You can install Java manually from:
-    echo             %appFolder%\files\jre-8u271-windows-i586-iftw.exe
+    echo             %ZeymalFiles%\jre_extract\jre-8u271-windows-i586-iftw.exe
     echo           Continuing with the rest of the setup...
     call :ackWarn
 )
@@ -176,29 +175,15 @@ if !errorlevel! neq 0 (
 )
 echo.
 
-echo ============================================================
-echo.
-echo   ACTION REQUIRED: Install the Zeymal application
-echo.
-echo   The Zeymal installer is located here:
-echo.
-echo     %appFolder%\Zeymal.exe
-echo.
-echo   Please run that file now and complete the installation.
-echo   When you are done, press any key to continue setup.
-echo.
-echo ============================================================
-echo.
-pause >nul
-echo.
+call :RunZeymalInstaller
 
 :: ------------------------------------------------------------
-:: [9.5/13] Copy Zeymal files to Program Files folder
+:: [9.5/13] Copy the Zeymal base files into the app folder
 :: ------------------------------------------------------------
-echo [9.5/13] Copying Zeymal files to C:\Program Files (x86)\Zeymal...
-call :CopyToProgramFiles
+echo [9.5/13] Copying Zeymal base files to %appFolder%...
+call :CopyBaseFiles
 if !errorlevel! neq 0 (
-    echo   [WARN ] Copy to Program Files had issues.
+    echo   [WARN ] Copying the base files had issues.
     call :ackWarn
 )
 echo.
@@ -229,17 +214,36 @@ echo.
 :: ------------------------------------------------------------
 echo [13/13] Restoring Ashley database...
 call :RestoreAshleyDb
+call :SetAppFtpPassword
+echo.
+
+:: ------------------------------------------------------------
+:: [Cleanup] Delete the downloads whose contents are in place
+:: ------------------------------------------------------------
+echo [Cleanup] Deleting setup downloads that are no longer needed...
+call :CleanupDownloads
+echo.
+
+:: ------------------------------------------------------------
+:: [Lockdown] Restrict SQL Server to the sa login
+:: ------------------------------------------------------------
+echo [Lockdown] Turning off Windows sign-in to SQL Server...
+call :RestrictSqlToSa
 echo.
 
 echo ============================================================
 echo   Setup complete
 echo ============================================================
 echo   User account     : %newUser%   (password: %newPassword%)
-echo   App folder       : %appFolder%
-echo   Files folder     : %appFolder%\files
-echo   Downloads        : %DownloadPath%
+echo   App folder       : %appFolder%   (Zeymal, IIS /RT and FTP root)
+echo   Setup downloads  : !downloadsState!
 echo   SQL instance     : .\SQLEXPRESS  (TCP 1433)
-echo   SQL SA password  : %sqlSaPassword%
+if defined sqlSaPassword (
+    echo   SQL SA password  : !sqlSaPassword!   ^(the school's Zeymal config must use it^)
+) else (
+    echo   SQL SA password  : the one chosen when SQL Server was installed
+)
+echo   SQL sign-in      : !sqlLockState!
 echo   IIS Virtual Dir  : http://localhost/RT
 echo   FTP site         : ftp://localhost/  (site name: RT)
 echo ============================================================
@@ -325,6 +329,9 @@ goto :fatal_wait
 :: :EnsureUser <username> <password> <admin? 0/1>
 :: Creates the user if missing, sets password-never-expires,
 :: and optionally adds to the Administrators group.
+:: An existing user must already have <password>: IIS, FTP and the
+:: app's network sources are set up with it. If not (servers set up
+:: before used "master"), the operator is asked before it is changed.
 :: ============================================================
 :EnsureUser
 set "eu_user=%~1"
@@ -340,10 +347,32 @@ if errorlevel 1 (
         exit /b 1
     )
     echo   [ OK  ] User "%eu_user%" created.
-) else (
-    echo   [ OK  ] User "%eu_user%" already exists.
+    goto :EU_groups
 )
+echo   [ OK  ] User "%eu_user%" already exists.
+call :CheckUserPassword "%eu_user%" "%eu_pass%"
+if !errorlevel! equ 0 (
+    echo   [ OK  ] Its password is already %eu_pass%.
+    goto :EU_groups
+)
+echo   [WARN ] "%eu_user%" has another password ^(servers set up before used "master"^).
+echo           Setup changes it to %eu_pass% and updates IIS, FTP and the app's network
+echo           sources in the Ashley database to match. Zeymal on the other PCs picks it
+echo           up at its next sign-in. Anything else that signs in as %eu_user%, such as a
+echo           scheduled task, needs the new password by hand.
+choice /c YN /m "  Change the password of %eu_user% to %eu_pass% now"
+if errorlevel 2 (
+    echo   [ERROR] Setup needs %eu_user%'s password to be %eu_pass%. Nothing was changed.
+    exit /b 1
+)
+net user "%eu_user%" "%eu_pass%" >nul
+if !errorlevel! neq 0 (
+    echo   [ERROR] Failed to change the password of "%eu_user%".
+    exit /b 1
+)
+echo   [ OK  ] Password of "%eu_user%" changed.
 
+:EU_groups
 if "%eu_admin%"=="1" (
     net localgroup "Administrators" "%eu_user%" /add >nul 2>&1
     echo   [ OK  ] "%eu_user%" ensured in Administrators group.
@@ -359,8 +388,518 @@ if !errorlevel! neq 0 (
 exit /b 0
 
 
+:: Returns 0 when <user> can sign in with <password>. A network logon, which starts nothing.
+:CheckUserPassword
+set "CU_USER=%~1"
+set "CU_PASS=%~2"
+powershell -NoProfile -Command "Add-Type -Namespace ZeymalSetup -Name Logon -MemberDefinition '[DllImport(\"advapi32.dll\", SetLastError = true)] public static extern bool LogonUser(string user, string domain, string password, int type, int provider, out System.IntPtr token); [DllImport(\"kernel32.dll\")] public static extern bool CloseHandle(System.IntPtr handle);'; $t = [IntPtr]::Zero; if ([ZeymalSetup.Logon]::LogonUser($env:CU_USER, '.', $env:CU_PASS, 3, 0, [ref]$t)) { [void][ZeymalSetup.Logon]::CloseHandle($t); exit 0 } else { exit 1 }"
+set "cuRc=!errorlevel!"
+set "CU_USER="
+set "CU_PASS="
+exit /b %cuRc%
+
+
+:: ============================================================
+:: :AskSaPassword - when SQL Server is about to be installed, asks
+:: for the password of its "sa" login. Setup appends #<YYMMDD> of
+:: the install day to what is typed (DbPass -> DbPass#261103);
+:: Enter takes DbPass. The password itself is not stored; the date
+:: is (SqlInstallDate), so a later run can ask for the part before #.
+:: ============================================================
+:AskSaPassword
+set "sqlSaPassword="
+sc query "MSSQL$SQLEXPRESS" >nul 2>&1 && exit /b 0
+for /f %%D in ('powershell -NoProfile -Command "(Get-Date).ToString('yyMMdd')"') do set "sqlDate=%%D"
+call :RegSet SqlInstallDate "!sqlDate!"
+echo.
+echo   SQL Server will be installed. Choose the password of its "sa" login:
+echo   setup adds #!sqlDate! ^(today^) to what you type. Press Enter for DbPass#!sqlDate!.
+echo   Use at least 3 characters, at least one a letter: letters, digits, @ $ _ . - + *
+:ASP_prompt
+set "saBase="
+set /p "saBase=  sa password > "
+if not defined saBase set "saBase=DbPass"
+:: Checked in PowerShell, so no character of it is ever run through cmd.
+set "CHK_PW=!saBase!"
+powershell -NoProfile -Command "if ($env:CHK_PW -cmatch '^[A-Za-z0-9@$_.+*-]{3,100}$' -and $env:CHK_PW -match '[A-Za-z]') { exit 0 } else { exit 1 }"
+set "chkRc=!errorlevel!"
+set "CHK_PW="
+if !chkRc! neq 0 (
+    echo   [ERROR] At least 3 characters, at least one a letter, using only letters, digits
+    echo           and @ $ _ . - + *
+    goto :ASP_prompt
+)
+set "sqlSaPassword=!saBase!#!sqlDate!"
+set "saBase="
+echo   [ OK  ] The sa password will be: !sqlSaPassword!
+echo           Note it down: the school's Zeymal config ^(Load Config^) must use it.
+echo           At the end, SQL Server is restricted to sa ^(Windows sign-in is turned off^).
+exit /b 0
+
+
+:: ============================================================
+:: :SqlSignIn - SQL Server is already installed: find out how setup
+:: can sign in. Windows authentication works on a server that was
+:: never restricted; then a typed sa password lets setup restrict it
+:: at the end. On a restricted server only sa works, so setup needs
+:: its password for the database steps. Enter skips either way.
+:: ============================================================
+:SqlSignIn
+sc query "MSSQL$SQLEXPRESS" >nul 2>&1 || exit /b 0
+if defined sqlSaPassword exit /b 0
+call :FindSqlcmd || exit /b 0
+call :RegGet SqlInstallDate sqlDate
+call :SqlTry -E
+if !errorlevel! equ 0 (
+    echo   Windows administrators can sign in to SQL Server. To restrict it to the sa login
+    echo   at the end of setup, type the sa password. Press Enter to leave it as it is.
+) else (
+    echo   SQL Server accepts only the sa login. Type its password for setup's database steps.
+    echo   Press Enter to skip those steps.
+)
+if defined sqlDate echo   The part before #!sqlDate! is enough.
+set "ssTries=0"
+:SSI_prompt
+set "saTyped="
+set /p "saTyped=  sa password > "
+if not defined saTyped (
+    echo   [SKIP ] No sa password: SQL Server sign-in is left as it is.
+    exit /b 0
+)
+set /a ssTries+=1
+set "SQLCMDPASSWORD=!saTyped!"
+call :SqlTry -U sa
+if !errorlevel! neq 0 if defined sqlDate (
+    set "SQLCMDPASSWORD=!saTyped!#!sqlDate!"
+    call :SqlTry -U sa
+)
+if !errorlevel! equ 0 (
+    set "sqlSaPassword=!SQLCMDPASSWORD!"
+    set "SQLAUTH=-U sa"
+    set "saTyped="
+    echo   [ OK  ] Signed in to SQL Server as sa.
+    exit /b 0
+)
+set "SQLCMDPASSWORD="
+if !ssTries! LSS 3 (
+    echo   [ERROR] sa did not sign in with that password. Try again, or press Enter to skip.
+    goto :SSI_prompt
+)
+set "saTyped="
+echo   [WARN ] sa did not sign in after 3 tries ^(more could lock the login^). Skipping.
+call :ackWarn
+exit /b 0
+
+
+:: Returns 0 when sqlcmd can sign in to .\SQLEXPRESS with <auth> (-E, or -U sa with the
+:: password in SQLCMDPASSWORD, which sqlcmd reads itself: it never shows on a command line).
+:: sqlcmd gets no input: it would otherwise share, and move, the input the prompts read.
+:SqlTry
+sqlcmd -S .\SQLEXPRESS %* -C -b -l 15 -Q "SET NOCOUNT ON; SELECT 1" <nul >nul 2>&1
+if !errorlevel! equ 0 exit /b 0
+sqlcmd -S .\SQLEXPRESS %* -b -l 15 -Q "SET NOCOUNT ON; SELECT 1" <nul >nul 2>&1
+exit /b !errorlevel!
+
+
+:: ============================================================
+:: :FindSqlcmd - returns 0 when sqlcmd can be run. In the window
+:: that has just installed SQL Server, PATH is from before the
+:: install, so sqlcmd's own folder is looked up and added to PATH.
+:: ============================================================
+:FindSqlcmd
+where sqlcmd >nul 2>&1 && exit /b 0
+set "sqlcmdDir="
+for /d %%D in ("%ProgramFiles%\Microsoft SQL Server\*") do if exist "%%~D\Tools\Binn\SQLCMD.EXE" set "sqlcmdDir=%%~D\Tools\Binn"
+for /d %%D in ("%ProgramFiles%\Microsoft SQL Server\Client SDK\ODBC\*") do if exist "%%~D\Tools\Binn\SQLCMD.EXE" set "sqlcmdDir=%%~D\Tools\Binn"
+if not defined sqlcmdDir exit /b 1
+set "PATH=!sqlcmdDir!;!PATH!"
+exit /b 0
+
+
+:: ============================================================
+:: :RestrictSqlToSa - once sa signs in, turns Windows sign-in to
+:: SQL Server off: every Windows user and group login (including
+:: BUILTIN\Administrators, which the install made sysadmin, and so
+:: RT) is denied CONNECT SQL and disabled - what used to be done by
+:: hand. SQL Server's own service accounts (NT SERVICE\..., NT
+:: AUTHORITY\...) are left alone. Undo for one login:
+::   ALTER LOGIN [x] ENABLE; REVOKE CONNECT SQL FROM [x];
+:: ============================================================
+:RestrictSqlToSa
+set "sqlLockState=Windows administrators and sa"
+if not defined sqlSaPassword (
+    echo   [SKIP ] The sa password is not known in this run, so Windows sign-in is left on.
+    exit /b 0
+)
+sc query "MSSQL$SQLEXPRESS" >nul 2>&1 || exit /b 0
+call :FindSqlcmd
+if !errorlevel! neq 0 (
+    echo   [WARN ] sqlcmd not found, so Windows sign-in to SQL Server is left on.
+    call :ackWarn
+    exit /b 0
+)
+set "SQLCMDPASSWORD=!sqlSaPassword!"
+call :SqlTry -U sa
+if !errorlevel! neq 0 (
+    echo   [WARN ] sa does not sign in with the password set at install, so Windows sign-in
+    echo           to SQL Server is left on. Check sa in SSMS, then run setup.bat again.
+    call :ackWarn
+    exit /b 0
+)
+set "LOCK_SQL=SET NOCOUNT ON; DECLARE @name sysname, @sql nvarchar(max); DECLARE logins CURSOR LOCAL FAST_FORWARD FOR SELECT sp.name FROM sys.server_principals sp WHERE sp.type IN ('U', 'G') AND LEFT(sp.name, 11) <> N'NT SERVICE\' AND LEFT(sp.name, 13) <> N'NT AUTHORITY\' AND (sp.is_disabled = 0 OR NOT EXISTS (SELECT 1 FROM sys.server_permissions pe WHERE pe.grantee_principal_id = sp.principal_id AND pe.permission_name = 'CONNECT SQL' AND pe.state = 'D')); OPEN logins; FETCH NEXT FROM logins INTO @name; WHILE @@FETCH_STATUS = 0 BEGIN SET @sql = N'DENY CONNECT SQL TO ' + QUOTENAME(@name) + N'; ALTER LOGIN ' + QUOTENAME(@name) + N' DISABLE;'; EXEC (@sql); PRINT '  Windows sign-in turned off for ' + @name; FETCH NEXT FROM logins INTO @name; END; CLOSE logins; DEALLOCATE logins;"
+sqlcmd -S .\SQLEXPRESS -U sa -C -b -l 15 -Q "!LOCK_SQL!"
+if !errorlevel! neq 0 sqlcmd -S .\SQLEXPRESS -U sa -b -l 15 -Q "!LOCK_SQL!"
+set "lockRc=!errorlevel!"
+set "LOCK_SQL="
+set "SQLAUTH=-U sa"
+call :SqlTry -E
+if !errorlevel! equ 0 (
+    echo   [WARN ] Windows sign-in to SQL Server still works ^(exit !lockRc!^). Check the logins in SSMS.
+    call :ackWarn
+    exit /b 0
+)
+echo   [ OK  ] SQL Server accepts only sa now; Windows sign-in is off.
+set "sqlLockState=sa only (Windows sign-in off)"
+exit /b 0
+
+
+:: ============================================================
+:: :SetAppFtpPassword - the app signs in to FTP with the user and
+:: password in dbo.Ash_NetworkSource, so every source that uses RT
+:: gets RT's password (the restored backup has the old "master").
+:: Runs on every run; a source that already has it is not touched.
+:: ============================================================
+:SetAppFtpPassword
+call :QueryAshleyDb
+if /i not "!dbExists!"=="YES" exit /b 0
+set "FTP_SQL=SET NOCOUNT ON; UPDATE dbo.Ash_NetworkSource SET AsH_Password = N'$(APP_PASSWORD)', Ash_ModifiedBy = N'Admin', Ash_ModifiedDate = GETDATE() WHERE AsH_User = N'$(APP_USER)' AND (AsH_Password IS NULL OR CAST(AsH_Password AS varbinary(2000)) <> CAST(N'$(APP_PASSWORD)' AS varbinary(2000))); PRINT CAST(@@ROWCOUNT AS varchar(10)) + ' network source(s) updated';"
+sqlcmd -S .\SQLEXPRESS %SQLAUTH% -C -d Ashley -b -h -1 -v APP_USER="%newUser%" APP_PASSWORD="%newPassword%" -Q "!FTP_SQL!"
+if !errorlevel! neq 0 sqlcmd -S .\SQLEXPRESS %SQLAUTH% -d Ashley -b -h -1 -v APP_USER="%newUser%" APP_PASSWORD="%newPassword%" -Q "!FTP_SQL!"
+if !errorlevel! neq 0 (
+    echo   [WARN ] Could not set the app's FTP password in the Ashley database. In Zeymal,
+    echo           set the password of every network source that uses %newUser% to %newPassword%.
+    call :ackWarn
+) else (
+    echo   [ OK  ] The app's FTP sources use %newUser% / %newPassword%.
+)
+set "FTP_SQL="
+exit /b 0
+
+
+
+:: ============================================================
+:: :ChooseFolders - sets appFolder (where Zeymal is installed; also
+:: the IIS /RT and FTP root, where the school's photos and documents
+:: go) and DownloadPath (what setup downloads, in a separate
+:: Zeymal-Setup folder on the same drive; each item is deleted once
+:: it is installed).
+::
+:: Neither goes under C:\Users any more. An administrator other than
+:: RT is not sure to be able to write into RT's profile (some
+:: machines ended up with corrupt zips there), and making
+:: C:\Users\RT before RT's first logon pushes RT's real profile to
+:: C:\Users\RT.<PC>. A drive other than the system drive is used
+:: when there is one.
+::
+:: Both are saved in the registry, so the re-run after the IIS reboot
+:: uses the same folders. An existing IIS /RT folder is kept unless
+:: it is the old script's C:\Users\RT\zeymal: then a new folder is
+:: chosen and step 12 moves the school's files into it.
+:: ============================================================
+:ChooseFolders
+call :RegGet AppFolder appFolder
+call :RegGet DownloadFolder DownloadPath
+
+:: The fixed NTFS drive, other than the system drive, with the most free space (at least 4 GB).
+set "dataDrive="
+set "dataFree="
+for /f "tokens=1,2" %%A in ('powershell -NoProfile -Command "$s = $env:SystemDrive; Get-WmiObject Win32_LogicalDisk -Filter 'DriveType=3' | Where-Object { $_.DeviceID -ne $s -and $_.FileSystem -eq 'NTFS' -and $_.FreeSpace -ge 4GB } | Sort-Object FreeSpace -Descending | Select-Object -First 1 | ForEach-Object { '{0} {1:N0}' -f $_.DeviceID, ($_.FreeSpace / 1GB) }" 2^>nul') do (
+    set "dataDrive=%%A"
+    set "dataFree=%%B"
+)
+
+if defined appFolder (
+    echo   [ OK  ] Using the folder chosen on an earlier run.
+) else (
+    call :IisRootFolder
+)
+if not defined appFolder (
+    if exist "%legacyApp%\" (
+        echo   [NOTE ] This server's files are in %legacyApp%. Step 12 moves them
+        echo           into the folder chosen here and points IIS and FTP at it.
+    )
+    call :AskAppFolder
+)
+if not defined appFolder exit /b 1
+
+:: Downloads go on the app folder's drive, or on the other drive when the app folder is on the system drive.
+if not defined DownloadPath (
+    set "workDrive=!appFolder:~0,2!"
+    if /I "!workDrive!"=="%SystemDrive%" if defined dataDrive set "workDrive=!dataDrive!"
+    set "DownloadPath=!workDrive!\Zeymal-Setup"
+)
+call :RegSet AppFolder "!appFolder!"
+call :RegSet DownloadFolder "!DownloadPath!"
+echo   App folder       : !appFolder!
+echo   Downloads folder : !DownloadPath!
+exit /b 0
+
+
+:: Reuse the folder an earlier setup gave the IIS /RT virtual directory, if IIS has one,
+:: unless it is under C:\Users (the old script's folder, which is moved instead).
+:IisRootFolder
+set "iisRoot="
+if exist "%windir%\system32\inetsrv\appcmd.exe" for /f "delims=" %%P in ('%windir%\system32\inetsrv\appcmd.exe list vdir "Default Web Site/RT/" /text:physicalPath 2^>nul') do set "iisRoot=%%P"
+if defined iisRoot if /I "!iisRoot:~0,9!"=="%SystemDrive%\Users\" set "iisRoot="
+if defined iisRoot if exist "!iisRoot!\" (
+    set "appFolder=!iisRoot!"
+    echo   [ OK  ] Keeping the folder IIS /RT already uses: !appFolder!
+)
+exit /b 0
+
+
+:: Ask the operator, suggesting <data drive>\Zeymal.
+:AskAppFolder
+if defined dataDrive (
+    set "suggest=!dataDrive!\Zeymal"
+    echo   Suggested drive: !dataDrive! ^(!dataFree! GB free^), not the system drive %SystemDrive%.
+) else (
+    set "suggest=%SystemDrive%\Zeymal"
+    echo   [WARN ] No other NTFS drive with 4 GB free was found, so only %SystemDrive% is left.
+)
+:AAF_prompt
+set "answer="
+echo   Zeymal folder. Press Enter for !suggest!, or type another full path:
+set /p "answer=  > "
+if not defined answer set "answer=!suggest!"
+set "answer=!answer:"=!"
+if "!answer:~-1!"=="\" set "answer=!answer:~0,-1!"
+:: Letters, digits, spaces and _ . - only: other characters break the batch file or appcmd.
+set "CHK_PATH=!answer!"
+powershell -NoProfile -Command "if ($env:CHK_PATH -match '^[A-Za-z]:\\[A-Za-z0-9 _.\\-]+$' -and (Test-Path -LiteralPath $env:CHK_PATH.Substring(0,3))) { exit 0 } else { exit 1 }"
+set "chkRc=!errorlevel!"
+set "CHK_PATH="
+if !chkRc! neq 0 (
+    echo   [ERROR] Type a full path on an existing drive, e.g. D:\Zeymal, using only
+    echo           letters, digits, spaces and _ . -
+    goto :AAF_prompt
+)
+if /I "!answer:~0,9!"=="%SystemDrive%\Users\" (
+    echo   [ERROR] Not under %SystemDrive%\Users: setup is not sure to be able to write there.
+    goto :AAF_prompt
+)
+if /I "!answer:~0,2!"=="%SystemDrive%" if defined dataDrive (
+    choice /c YN /m "  !answer! is on the system drive. Use it anyway"
+    if errorlevel 2 goto :AAF_prompt
+)
+set "appFolder=!answer!"
+exit /b 0
+
+
+:: ============================================================
+:: :PrepareFolder <path> [user] - creates the folder, gives the
+:: Administrators and SYSTEM full control (by SID, so any Windows
+:: language works) and [user] modify rights, then proves setup can
+:: write there. A folder setup can't write to stops the run here
+:: instead of ending in a half-written download.
+:: ============================================================
+:PrepareFolder
+set "pf_path=%~1"
+set "pf_user=%~2"
+if not exist "!pf_path!\" (
+    mkdir "!pf_path!" >nul 2>&1
+    if not exist "!pf_path!\" (
+        echo   [ERROR] Could not create: !pf_path!
+        exit /b 1
+    )
+    echo   [ OK  ] Created: !pf_path!
+) else (
+    echo   [ OK  ] Already exists: !pf_path!
+)
+icacls "!pf_path!" /grant "*S-1-5-32-544:(OI)(CI)F" "*S-1-5-18:(OI)(CI)F" >nul 2>&1
+if defined pf_user icacls "!pf_path!" /grant "!pf_user!:(OI)(CI)M" >nul 2>&1
+set "pf_probe=!pf_path!\zeymal-setup-write-test.tmp"
+>"!pf_probe!" echo probe
+if not exist "!pf_probe!" (
+    echo   [ERROR] Setup cannot write to: !pf_path!
+    echo           Check the folder's Security tab, or choose another folder.
+    exit /b 1
+)
+del /f /q "!pf_probe!" >nul 2>&1
+exit /b 0
+
+
+:: ============================================================
+:: :RegGet <valueName> <varName> / :RegSet <valueName> <data>
+:: Read and write setup's state under %setupRegKey%.
+:: ============================================================
+:RegGet
+set "%~2="
+for /f "tokens=2,*" %%A in ('reg query "%setupRegKey%" /v "%~1" 2^>nul ^| findstr /C:"REG_"') do set "%~2=%%B"
+exit /b 0
+
+:RegSet
+reg add "%setupRegKey%" /v "%~1" /t REG_SZ /d "%~2" /f >nul 2>&1
+exit /b %errorlevel%
+
+
+:: ============================================================
+:: :CheckDone - what is already in place, so its download is not
+:: fetched again (step 7) and can be deleted (cleanup). Sets
+:: doneSql, doneSsms, doneJava, doneInstaller and doneBase to 1 or
+:: leaves them empty, and oldInstall to the folder of a Zeymal that
+:: an earlier setup installed in Program Files on C:.
+:: ============================================================
+:CheckDone
+set "doneSql=" & set "doneSsms=" & set "doneJava=" & set "doneInstaller=" & set "doneBase=" & set "oldInstall="
+sc query "MSSQL$SQLEXPRESS" >nul 2>&1 && set "doneSql=1"
+call :DetectSsms
+if "!SsmsFound!"=="1" set "doneSsms=1"
+call :JavaInstalled
+if defined javaOk set "doneJava=1"
+:: Servers set up before Zeymal went into the app folder run it from Program Files. That
+:: install is left where it is: it is neither installed again nor given the base files again.
+for %%P in ("%ProgramFiles(x86)%\Zeymal" "%ProgramFiles%\Zeymal") do if exist "%%~P\Zeymal.jar" set "oldInstall=%%~P"
+if exist "%appFolder%\Zeymal.jar" set "doneInstaller=1"
+if defined oldInstall set "doneInstaller=1"
+:: The base is copied once only: copying it again would overwrite the settings and the
+:: updated Zeymal.jar of a school that is already using the app.
+call :RegGet BaseCopied baseCopied
+if "!baseCopied!"=="1" if exist "%appFolder%\Zeymal.jar" set "doneBase=1"
+if defined oldInstall set "doneBase=1"
+exit /b 0
+
+
+:: Sets javaOk=1 when JRE 8u271 is installed.
+:JavaInstalled
+set "javaOk="
+reg query "HKLM\SOFTWARE\JavaSoft\Java Runtime Environment\1.8.0_271" /reg:32 >nul 2>&1 && set "javaOk=1"
+if exist "%ProgramFiles(x86)%\Java\jre1.8.0_271\bin\java.exe" set "javaOk=1"
+if exist "%ProgramFiles%\Java\jre1.8.0_271\bin\java.exe" set "javaOk=1"
+exit /b 0
+
+
+:: Sets SsmsFound=1 when any SSMS is installed.
+:DetectSsms
+set "SsmsFound=0"
+
+reg query "HKLM\SOFTWARE\Microsoft\Microsoft SQL Server Management Studio" >nul 2>&1
+if !errorlevel! equ 0 set "SsmsFound=1"
+
+reg query "HKLM\SOFTWARE\WOW6432Node\Microsoft\Microsoft SQL Server Management Studio" >nul 2>&1
+if !errorlevel! equ 0 set "SsmsFound=1"
+
+for %%D in (17 18 19 20 21) do (
+    if exist "%ProgramFiles(x86)%\Microsoft SQL Server Management Studio %%D\Common7\IDE\Ssms.exe" set "SsmsFound=1"
+    if exist "%ProgramFiles%\Microsoft SQL Server Management Studio %%D\Common7\IDE\Ssms.exe"      set "SsmsFound=1"
+    if exist "%ProgramFiles%\Microsoft SQL Server Management Studio %%D\Release\Common7\IDE\Ssms.exe" set "SsmsFound=1"
+)
+exit /b 0
+
+
+:: ============================================================
+:: :QueryAshleyDb - sets dbExists to YES or NO, or leaves it empty
+:: when SQL Server can't be asked (not installed or running, sqlcmd
+:: not found, setup not allowed in). Signs in with %SQLAUTH%:
+:: Windows authentication (setup runs as an administrator, and the
+:: install makes Administrators sysadmin), or sa once SQL Server is
+:: restricted to it.
+:: ============================================================
+:QueryAshleyDb
+set "dbExists="
+sc query "MSSQL$SQLEXPRESS" >nul 2>&1 || exit /b 0
+call :FindSqlcmd || exit /b 0
+set "DB_CHECK=SET NOCOUNT ON; SELECT CASE WHEN DB_ID(N'Ashley') IS NULL THEN 'NO' ELSE 'YES' END"
+for /f "usebackq delims=" %%R in (`sqlcmd -S .\SQLEXPRESS %SQLAUTH% -C -h -1 -W -b -Q "%DB_CHECK%" 2^>nul`) do set "dbExists=%%R"
+if not defined dbExists for /f "usebackq delims=" %%R in (`sqlcmd -S .\SQLEXPRESS %SQLAUTH% -h -1 -W -b -Q "%DB_CHECK%" 2^>nul`) do set "dbExists=%%R"
+set "DB_CHECK="
+exit /b 0
+
+
+:: ============================================================
+:: :Discard <path> [<path> ...] - deletes setup downloads (files or
+:: folders) that are no longer needed. A zip goes together with its
+:: .part and .extracted companions.
+:: ============================================================
+:Discard
+if "%~1"=="" exit /b 0
+set "dc_path=%~1"
+for %%X in ("" ".part" ".extracted") do (
+    set "dc_item=!dc_path!%%~X"
+    if exist "!dc_item!\" (
+        rd /s /q "!dc_item!" >nul 2>&1
+        call :DiscardReport
+    ) else if exist "!dc_item!" (
+        del /f /q "!dc_item!" >nul 2>&1
+        call :DiscardReport
+    )
+)
+shift
+goto :Discard
+
+:DiscardReport
+if exist "!dc_item!" (
+    echo   [WARN ] Could not delete: !dc_item!
+) else (
+    echo   [CLEAN] Deleted: !dc_item!
+)
+exit /b 0
+
+
+:: ============================================================
+:: :CleanupDownloads - deletes each download once what it installs
+:: is in place. A download whose step did not finish is kept, so the
+:: next run reuses it. Also clears what the old script left in
+:: C:\Users\RT (only the files it put there); C:\Users\RT\zeymal
+:: itself goes once step 12 has moved the school's files out of it.
+:: ============================================================
+:CleanupDownloads
+call :CheckDone
+call :QueryAshleyDb
+
+for %%D in ("%DownloadPath%" "%legacyDownloads%") do (
+    if defined doneSql  call :Discard "%%~D\SQL2022-SSEI-Expr.exe" "%%~D\SQLMedia" "%%~D\SQLEXPRWT.exe"
+    if defined doneSsms call :Discard "%%~D\SSMS-Setup-ENU.exe" "%%~D\SSMS-Setup-17.exe"
+)
+if defined doneInstaller call :Discard "%DownloadPath%\Zeymal.exe"
+for %%D in ("%ZeymalFiles%" "%legacyFiles%") do (
+    if defined doneBase      call :Discard "%%~D\(Z_Replace_Base).zip" "%%~D\(Z_Replace_Base)"
+    if defined doneJava      call :Discard "%%~D\jre-8u271-windows-i586-iftw.zip" "%%~D\jre_extract"
+    if defined doneInstaller call :Discard "%%~D\Zeymal.zip"
+    if /i "!dbExists!"=="YES" call :Discard "%%~D\Z_Reset_1034.zip" "%%~D\ashley_restore"
+)
+:: The old script extracted the base and its installers into C:\Users\RT\zeymal itself.
+if defined doneBase      call :Discard "%legacyApp%\(Z_Replace_Base)"
+if defined doneInstaller call :Discard "%legacyApp%\Zeymal.exe"
+if defined doneJava      call :Discard "%legacyApp%\jre-8u271-windows-i586-iftw.exe"
+:: Folders are removed only once empty.
+rd "%legacyFiles%" >nul 2>&1
+rd "%legacyApp%" >nul 2>&1
+rd "%ZeymalFiles%" >nul 2>&1
+rd "%DownloadPath%" >nul 2>&1
+
+if exist "%DownloadPath%\" (
+    echo   [KEEP ] Kept for the next run, because their steps did not finish:
+    for /f "delims=" %%F in ('dir /b "%DownloadPath%" 2^>nul') do if /i not "%%F"=="files" echo             %%F
+    for /f "delims=" %%F in ('dir /b "%ZeymalFiles%" 2^>nul') do echo             files\%%F
+    set "downloadsState=some kept in %DownloadPath%"
+) else (
+    echo   [ OK  ] All setup downloads are deleted.
+    set "downloadsState=all deleted"
+)
+exit /b 0
+
+
 :: ============================================================
 :: :Download  -  Generic downloader with progress bar
+:: Downloads into <dest>.part and renames it to <dest> only when the
+:: transfer ended without an error and has the size the server
+:: announced, so <dest> never holds a partial file. Gives up after
+:: 5 minutes without data rather than a fixed total time.
+:: It reads the response in a plain loop that draws the progress bar
+:: itself (the old WebClient event handler could not see its helper
+:: functions, so the bar never showed) and whose read timeout ends a
+:: stalled transfer.
 :: ============================================================
 :Download
 set "DL_URL=%~1"
@@ -370,7 +909,7 @@ echo.
 echo   [Download] !DL_NAME!
 echo     From: !DL_URL!
 echo     To:   !DL_DEST!
-powershell -NoProfile -ExecutionPolicy Bypass -Command "& { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; function FmtSize($b) { if ($b -ge 1GB) { '{0,7:N2} GB' -f ($b/1GB) } elseif ($b -ge 1MB) { '{0,7:N2} MB' -f ($b/1MB) } elseif ($b -ge 1KB) { '{0,7:N2} KB' -f ($b/1KB) } else { '{0,7} B ' -f [int]$b } }; function FmtTime($s) { if ($s -le 0 -or [double]::IsInfinity($s) -or [double]::IsNaN($s)) { return '--:--' }; $ts = [TimeSpan]::FromSeconds([int]$s); if ($ts.TotalHours -ge 1) { '{0:D2}:{1:D2}:{2:D2}' -f [int]$ts.TotalHours,$ts.Minutes,$ts.Seconds } else { '{0:D2}:{1:D2}' -f $ts.Minutes,$ts.Seconds } }; $url = $env:DL_URL; $dest = $env:DL_DEST; $script:start = Get-Date; $wc = New-Object System.Net.WebClient; $null = Register-ObjectEvent $wc DownloadProgressChanged -SourceIdentifier DP -Action { $now = Get-Date; $el = ($now - $script:start).TotalSeconds; $r = [double]$EventArgs.BytesReceived; $t = [double]$EventArgs.TotalBytesToReceive; $p = [int]$EventArgs.ProgressPercentage; $spd = if ($el -gt 0) { $r / $el } else { 0 }; $eta = if ($spd -gt 0 -and $t -gt 0) { ($t - $r) / $spd } else { 0 }; $bw = 30; $fill = [int][math]::Floor(($p / 100.0) * $bw); if ($fill -gt $bw) { $fill = $bw }; if ($fill -lt 0) { $fill = 0 }; if ($fill -eq $bw) { $bar = '=' * $bw } else { $bar = ('=' * $fill) + '>' + (' ' * ($bw - $fill - 1)) }; Write-Host -NoNewline (\"`r    [{0}] {1,3}%% {2} / {3}  {4}/s  ETA {5}   \" -f $bar,$p,(FmtSize $r),(FmtSize $t),(FmtSize $spd),(FmtTime $eta)) }; $null = Register-ObjectEvent $wc DownloadFileCompleted -SourceIdentifier DC; try { $wc.DownloadFileAsync([Uri]$url, $dest); $null = Wait-Event -SourceIdentifier DC -Timeout 1800; Write-Host ''; if (Test-Path $dest) { $sz = FmtSize (Get-Item $dest).Length; $secs = ((Get-Date) - $script:start).TotalSeconds; Write-Host (\"    Done. Saved {0} in {1}.\" -f $sz.Trim(),(FmtTime $secs)); exit 0 } else { Write-Host '    Download failed.'; exit 1 } } finally { Unregister-Event DP -ErrorAction SilentlyContinue; Unregister-Event DC -ErrorAction SilentlyContinue; $wc.Dispose() } }"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "& { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; function FmtSize($b) { if ($b -ge 1GB) { '{0,7:N2} GB' -f ($b/1GB) } elseif ($b -ge 1MB) { '{0,7:N2} MB' -f ($b/1MB) } elseif ($b -ge 1KB) { '{0,7:N2} KB' -f ($b/1KB) } else { '{0,7} B ' -f [int]$b } }; function FmtTime($s) { if ($s -le 0 -or [double]::IsInfinity($s) -or [double]::IsNaN($s)) { return '--:--' }; $ts = [TimeSpan]::FromSeconds([int]$s); if ($ts.TotalHours -ge 1) { '{0:D2}:{1:D2}:{2:D2}' -f [int]$ts.TotalHours,$ts.Minutes,$ts.Seconds } else { '{0:D2}:{1:D2}' -f $ts.Minutes,$ts.Seconds } }; function Draw($r, $t, $start) { $el = ((Get-Date) - $start).TotalSeconds; $p = if ($t -gt 0) { [int][math]::Floor(100.0 * $r / $t) } else { 0 }; $spd = if ($el -gt 0) { $r / $el } else { 0 }; $eta = if ($spd -gt 0 -and $t -gt 0) { ($t - $r) / $spd } else { 0 }; $bw = 30; $fill = [int][math]::Floor(($p / 100.0) * $bw); if ($fill -gt $bw) { $fill = $bw }; if ($fill -lt 0) { $fill = 0 }; if ($fill -eq $bw) { $bar = '=' * $bw } else { $bar = ('=' * $fill) + '>' + (' ' * ($bw - $fill - 1)) }; Write-Host -NoNewline (\"`r    [{0}] {1,3}%% {2} / {3}  {4}/s  ETA {5}   \" -f $bar,$p,(FmtSize $r),(FmtSize $t),(FmtSize $spd),(FmtTime $eta)) }; $dest = $env:DL_DEST; $part = $dest + '.part'; Remove-Item -LiteralPath $part -Force -ErrorAction SilentlyContinue; $start = Get-Date; $drawn = [datetime]::MinValue; $r = 0; $t = -1; $rs = $null; $in = $null; $out = $null; try { $rq = [Net.WebRequest]::Create($env:DL_URL); $rq.Timeout = 60000; $rq.ReadWriteTimeout = 300000; $rs = $rq.GetResponse(); $t = $rs.ContentLength; $in = $rs.GetResponseStream(); $out = [IO.File]::Create($part); $buf = New-Object byte[] 65536; while (($n = $in.Read($buf, 0, $buf.Length)) -gt 0) { $out.Write($buf, 0, $n); $r += $n; if (((Get-Date) - $drawn).TotalMilliseconds -ge 250) { $drawn = Get-Date; Draw $r $t $start } }; $out.Close(); $out = $null; if ($t -gt 0 -and $r -ne $t) { throw ('only {0} of {1} bytes arrived' -f $r, $t) }; Draw $r $t $start; Write-Host '' } catch { Write-Host ''; $x = $_.Exception; while ($x.InnerException) { $x = $x.InnerException }; Write-Host ('    Download failed: ' + $x.Message); if ($out) { $out.Close() }; Remove-Item -LiteralPath $part -Force -ErrorAction SilentlyContinue; exit 1 } finally { if ($in) { $in.Close() }; if ($rs) { $rs.Close() } }; Remove-Item -LiteralPath $dest -Force -ErrorAction SilentlyContinue; Move-Item -LiteralPath $part -Destination $dest; $secs = ((Get-Date) - $start).TotalSeconds; Write-Host (\"    Done. Saved {0} in {1}.\" -f (FmtSize $r).Trim(),(FmtTime $secs)); exit 0 }"
 set "rc=!errorlevel!"
 set "DL_URL="
 set "DL_DEST="
@@ -384,10 +923,40 @@ exit /b %rc%
 :InstallSqlModern
 echo   --- SQL Server 2022 Express ---
 
+:: Which SQL Server the SQLEXPRESS instance is, if there is one: MSSQL16 = 2022, MSSQL17 = 2025.
+:: Microsoft's "SQL Server 2022 Express" link now gives SQL Server 2025, whose setup fails here
+:: on PolyBase ("Cannot find the user '<PC>\PdwComputeNodeAccess'") and brings Azure and AI
+:: features. Setup installs 2022 only, engine only, and stops on what an earlier attempt left.
+set "sqlInstId="
+for /f "tokens=2,*" %%A in ('reg query "HKLM\SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL" /v SQLEXPRESS 2^>nul ^| findstr /C:"REG_"') do set "sqlInstId=%%B"
+set "sqlInstVer=0"
+if defined sqlInstId set "sqlInstVer=!sqlInstId:~5,2!"
+:: A newer SQL Server that already holds the school's database is kept; one without it is most
+:: likely the failed attempt, so setup stops and asks for it to be removed.
+if !sqlInstVer! GEQ 17 (
+    call :QueryAshleyDb
+    if /i "!dbExists!"=="YES" (
+        echo   [WARN ] SQLEXPRESS is a newer SQL Server than 2022 ^(!sqlInstId!^). It holds the
+        echo           Ashley database, so it is kept. Skipping engine install.
+        exit /b 0
+    )
+    echo   [ERROR] SQLEXPRESS is a newer SQL Server than 2022 ^(!sqlInstId!^), probably left by an
+    echo           earlier attempt, and it has no Ashley database. Setup installs SQL Server 2022
+    echo           only. Uninstall it first: Settings ^> Apps ^> Installed apps, every "Microsoft
+    echo           SQL Server 2025" entry. Restart Windows, then run setup.bat again.
+    echo           If it holds other databases you need, back them up before uninstalling.
+    exit /b 1
+)
 sc query "MSSQL$SQLEXPRESS" >nul 2>&1
 if !errorlevel! equ 0 (
     echo   [ OK  ] SQLEXPRESS instance already installed. Skipping engine install.
     exit /b 0
+)
+if defined sqlInstId (
+    echo   [ERROR] An unfinished SQL Server install ^(!sqlInstId!^) is left by an earlier attempt.
+    echo           Uninstall it first: Settings ^> Apps ^> Installed apps, the "Microsoft SQL
+    echo           Server" entries. Restart Windows, then run setup.bat again.
+    exit /b 1
 )
 
 set "SqlBootstrap=%DownloadPath%\SQL2022-SSEI-Expr.exe"
@@ -396,25 +965,27 @@ set "SqlMediaFile=%SqlMediaDir%\SQLEXPR_x64_ENU.exe"
 set "SqlSetupDir=%SqlMediaDir%\extract"
 
 echo   Step 1/3: Fetching SQL Server 2022 Express bootstrapper...
-call :Download "https://go.microsoft.com/fwlink/p/?linkid=2216019&clcid=0x409&culture=en-us&country=us" "%SqlBootstrap%" "SQL Server 2022 Express bootstrapper"
+call :FetchSql2022Bootstrap "https://download.microsoft.com/download/29654887-7cde-4397-bba3-d7f087970845/SQL2022-SSEI-Expr.exe"
+if !errorlevel! neq 0 call :FetchSql2022Bootstrap "https://go.microsoft.com/fwlink/p/?linkid=2215160"
 if !errorlevel! neq 0 (
-    echo   [ERROR] Failed to download SQL Server 2022 Express bootstrapper.
-    exit /b 1
-)
-if not exist "%SqlBootstrap%" (
-    echo   [ERROR] Bootstrapper file missing after download:
-    echo           %SqlBootstrap%
-    exit /b 1
-)
-for %%A in ("%SqlBootstrap%") do set "SqlBootstrapSize=%%~zA"
-if !SqlBootstrapSize! LSS 100000 (
-    echo   [ERROR] Bootstrapper file looks too small ^(!SqlBootstrapSize! bytes^).
-    echo           The download probably returned an error page instead of the exe.
-    echo           Delete "%SqlBootstrap%" and re-run.
+    echo   [ERROR] Could not get the SQL Server 2022 Express bootstrapper from Microsoft.
+    echo           Download SQL Server 2022 Express ^(SQL2022-SSEI-Expr.exe^), save it as
+    echo             %SqlBootstrap%
+    echo           and run setup.bat again.
     exit /b 1
 )
 
 if not exist "%SqlMediaDir%" mkdir "%SqlMediaDir%"
+
+:: Media an earlier attempt left here is reused only if it is SQL Server 2022.
+if exist "%SqlMediaFile%" (
+    call :SqlExeCheck "%SqlMediaFile%" 0
+    if !errorlevel! neq 0 (
+        echo   [WARN ] The SQL Server media already here is not SQL Server 2022 ^(version !sqlExeMajor!^).
+        call :Discard "%SqlMediaDir%"
+        mkdir "%SqlMediaDir%" >nul 2>&1
+    )
+)
 
 if exist "%SqlMediaFile%" (
     echo   [ OK  ] Media package already present. Skipping media download.
@@ -440,23 +1011,45 @@ if exist "%SqlMediaFile%" (
         echo           %SqlMediaFile%
         exit /b 1
     )
+    call :SqlExeCheck "%SqlMediaFile%" 0
+    if !errorlevel! neq 0 (
+        echo   [ERROR] The downloaded media is not SQL Server 2022 ^(version !sqlExeMajor!, !sqlExeVerdict!^).
+        call :Discard "%SqlMediaDir%"
+        exit /b 1
+    )
     echo   [ OK  ] Media package downloaded.
 )
 
 echo.
 echo   Step 3/3: Extracting media and running silent install...
-if not exist "%SqlSetupDir%" mkdir "%SqlSetupDir%"
+:: Extract into an empty folder: files of another version left there would mix with these.
+if exist "%SqlSetupDir%\" rd /s /q "%SqlSetupDir%" >nul 2>&1
+mkdir "%SqlSetupDir%" >nul 2>&1
+:: Media that won't extract is most likely an interrupted download. It is deleted, otherwise
+:: every later run would find it, skip the download and fail here again.
 start "SQL Server Media Extract" /wait "%SqlMediaFile%" /X:"%SqlSetupDir%" /Q
 if !errorlevel! neq 0 (
     echo   [ERROR] Failed to extract SQL Server media.
+    call :Discard "%SqlMediaDir%"
+    echo           The media was deleted; the next run downloads it again.
     exit /b 1
 )
 if not exist "%SqlSetupDir%\setup.exe" (
     echo   [ERROR] setup.exe not found after extraction:
     echo           %SqlSetupDir%\setup.exe
+    call :Discard "%SqlMediaDir%"
+    echo           The media was deleted; the next run downloads it again.
+    exit /b 1
+)
+call :SqlExeCheck "%SqlSetupDir%\setup.exe" 0
+if !errorlevel! neq 0 (
+    echo   [ERROR] This setup.exe is not SQL Server 2022 ^(version !sqlExeMajor!, !sqlExeVerdict!^).
+    call :Discard "%SqlMediaDir%"
+    echo           The media was deleted; the next run downloads it again.
     exit /b 1
 )
 
+:: Engine only: no PolyBase, full-text, replication, Azure extension or anything else.
 echo   Running SQL Server setup ^(silent, this can take several minutes^)...
 echo   Do NOT close this window.
 "%SqlSetupDir%\setup.exe" /Q /IACCEPTSQLSERVERLICENSETERMS /ACTION=INSTALL ^
@@ -480,6 +1073,47 @@ if !SqlSetupExit! neq 0 (
 )
 echo   [ OK  ] SQL Server 2022 Express installed successfully.
 exit /b 0
+
+
+:: Gets the SQL Server 2022 Express bootstrapper from <url>, unless a good one is already here.
+:: What is not a Microsoft-signed SQL Server 2022 file is deleted (the link may move to 2025).
+:FetchSql2022Bootstrap
+if exist "%SqlBootstrap%" (
+    call :SqlExeCheck "%SqlBootstrap%" 1
+    if !errorlevel! equ 0 (
+        echo   [ OK  ] SQL Server 2022 Express bootstrapper already downloaded.
+        exit /b 0
+    )
+    del /f /q "%SqlBootstrap%" >nul 2>&1
+)
+call :Download "%~1" "%SqlBootstrap%" "SQL Server 2022 Express bootstrapper"
+if !errorlevel! neq 0 exit /b 1
+call :SqlExeCheck "%SqlBootstrap%" 1
+if !errorlevel! equ 0 exit /b 0
+echo   [WARN ] That link did not give the SQL Server 2022 installer ^(version !sqlExeMajor!, !sqlExeVerdict!^).
+del /f /q "%SqlBootstrap%" >nul 2>&1
+exit /b 1
+
+
+:: ============================================================
+:: :SqlExeCheck <file> <strict 0/1> - returns 0 when <file> is
+:: signed by Microsoft and is SQL Server 2022 (product version 16).
+:: Not strict: a file without version information is accepted too.
+:: Sets sqlExeMajor and sqlExeVerdict (ok, version or unsigned).
+:: ============================================================
+:SqlExeCheck
+set "SX_PATH=%~1"
+set "SX_STRICT=%~2"
+set "sqlExeMajor=?"
+set "sqlExeVerdict=unreadable"
+for /f "tokens=1,2" %%A in ('powershell -NoProfile -Command "$f = $env:SX_PATH; $s = $null; $m = 0; try { $s = Get-AuthenticodeSignature -LiteralPath $f; $m = (Get-Item -LiteralPath $f).VersionInfo.ProductMajorPart } catch {}; if (-not $s -or $s.Status -ne 'Valid' -or $s.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') { $v = 'unsigned' } elseif ($m -eq 16 -or ($m -eq 0 -and $env:SX_STRICT -ne '1')) { $v = 'ok' } else { $v = 'version' }; Write-Output ('{0} {1}' -f $m, $v)"') do (
+    set "sqlExeMajor=%%A"
+    set "sqlExeVerdict=%%B"
+)
+set "SX_PATH="
+set "SX_STRICT="
+if "!sqlExeVerdict!"=="ok" exit /b 0
+exit /b 1
 
 
 :: ============================================================
@@ -526,20 +1160,7 @@ exit /b 0
 echo.
 echo   --- SQL Server Management Studio (SSMS) ---
 
-set "SsmsFound=0"
-
-reg query "HKLM\SOFTWARE\Microsoft\Microsoft SQL Server Management Studio" >nul 2>&1
-if !errorlevel! equ 0 set "SsmsFound=1"
-
-reg query "HKLM\SOFTWARE\WOW6432Node\Microsoft\Microsoft SQL Server Management Studio" >nul 2>&1
-if !errorlevel! equ 0 set "SsmsFound=1"
-
-for %%D in (17 18 19 20 21) do (
-    if exist "%ProgramFiles(x86)%\Microsoft SQL Server Management Studio %%D\Common7\IDE\Ssms.exe" set "SsmsFound=1"
-    if exist "%ProgramFiles%\Microsoft SQL Server Management Studio %%D\Common7\IDE\Ssms.exe"      set "SsmsFound=1"
-    if exist "%ProgramFiles%\Microsoft SQL Server Management Studio %%D\Release\Common7\IDE\Ssms.exe" set "SsmsFound=1"
-)
-
+call :DetectSsms
 if "!SsmsFound!"=="1" (
     echo   [ OK  ] SSMS is already installed. Skipping.
     exit /b 0
@@ -580,20 +1201,6 @@ exit /b 0
 :: Download the Zeymal application files (with real filenames)
 :: ============================================================
 :DownloadZeymalFiles
-set "ZeymalFiles=%appFolder%\files"
-
-if not exist "%ZeymalFiles%" (
-    mkdir "%ZeymalFiles%"
-    if !errorlevel! neq 0 (
-        echo   [ERROR] Failed to create Zeymal files folder.
-        echo           Path: %ZeymalFiles%
-        exit /b 1
-    )
-    echo   [ OK  ] Created: %ZeymalFiles%
-) else (
-    echo   [ OK  ] Already exists: %ZeymalFiles%
-)
-
 set "ZeymalBaseUrl=https://zml-installer.blr1.digitaloceanspaces.com/"
 
 
@@ -602,7 +1209,16 @@ set "ZeymalIftwInstaller=%ZeymalBaseUrl%jre-8u271-windows-i586-iftw.zip"
 set "Zeymalexe=%ZeymalBaseUrl%Zeymal.zip"
 set "ZeymalResetxip=%ZeymalBaseUrl%Z_Reset_1034.zip"
 
-echo   Checking existing files ^(complete files ^>= 10 KB will be skipped^)...
+:: What an earlier run already installed is not downloaded again (its download was deleted).
+call :CheckDone
+call :QueryAshleyDb
+set "skipBase=" & set "skipJava=" & set "skipExe=" & set "skipReset="
+if defined doneBase      set "skipBase=its files are already in place"
+if defined doneJava      set "skipJava=Java 8u271 is already installed"
+if defined doneInstaller set "skipExe=Zeymal is already installed"
+if /i "!dbExists!"=="YES" set "skipReset=the Ashley database already exists"
+
+echo   Checking existing files ^(each is verified against the server before it is reused^)...
 echo   Target folder: %ZeymalFiles%
 for %%F in ("(Z_Replace_Base).zip" "jre-8u271-windows-i586-iftw.zip" "Zeymal.zip" "Z_Reset_1034.zip") do (
     if exist "%ZeymalFiles%\%%~F" (
@@ -612,13 +1228,13 @@ for %%F in ("(Z_Replace_Base).zip" "jre-8u271-windows-i586-iftw.zip" "Zeymal.zip
     )
 )
 
-call :DownloadZeymalItem "ZeymalRplaceXip"     "(Z_Replace_Base).zip"            1 4
+call :DownloadZeymalItem "ZeymalRplaceXip"     "(Z_Replace_Base).zip"            1 4 "!skipBase!"
 if !errorlevel! neq 0 exit /b 1
-call :DownloadZeymalItem "ZeymalIftwInstaller" "jre-8u271-windows-i586-iftw.zip" 2 4
+call :DownloadZeymalItem "ZeymalIftwInstaller" "jre-8u271-windows-i586-iftw.zip" 2 4 "!skipJava!"
 if !errorlevel! neq 0 exit /b 1
-call :DownloadZeymalItem "Zeymalexe"           "Zeymal.zip"                      3 4
+call :DownloadZeymalItem "Zeymalexe"           "Zeymal.zip"                      3 4 "!skipExe!"
 if !errorlevel! neq 0 exit /b 1
-call :DownloadZeymalItem "ZeymalResetxip"      "Z_Reset_1034.zip"                4 4
+call :DownloadZeymalItem "ZeymalResetxip"      "Z_Reset_1034.zip"                4 4 "!skipReset!"
 if !errorlevel! neq 0 exit /b 1
 
 echo   [ OK  ] All Zeymal files downloaded successfully.
@@ -626,26 +1242,36 @@ exit /b 0
 
 
 :: ============================================================
-:: :DownloadZeymalItem <urlVarName> <destFileName> <idx> <total>
+:: :DownloadZeymalItem <urlVarName> <destFileName> <idx> <total> [skipReason]
 :: Downloads a single Zeymal asset with full validation:
+::   - not at all when [skipReason] says what it installs is in place
 ::   - checks inputs, URL variable is set, target folder exists
-::   - skips only if an existing file is above the minimum size
+::   - reuses an existing copy only if :VerifyDownload passes (an
+::     interrupted run can leave a partial file); a copy the old
+::     script left in C:\Users\RT\zeymal\files is moved here first
+::   - downloads into <name>.part and renames it only once verified,
+::     so a file with the real name is always complete; curl resumes
+::     a .part left by a dropped connection
 ::   - prefers curl.exe; falls back to PowerShell WebClient
 ::   - retries up to 3 times on failure
-::   - after download: file must exist, be non-tiny, and (for
-::     .zip files) open as a valid ZIP archive
 :: ============================================================
 :DownloadZeymalItem
 set "varName=%~1"
 set "fileName=%~2"
 set "idx=%~3"
 set "total=%~4"
+set "skipWhy=%~5"
 set "fileUrl=!%varName%!"
 set "fileDest=%ZeymalFiles%\%fileName%"
-set "minSize=10240"
+set "filePart=!fileDest!.part"
 
 echo.
 echo   [File %idx%/%total%] %fileName%
+
+if defined skipWhy (
+    echo     [ OK  ] Not needed: !skipWhy!.
+    exit /b 0
+)
 
 :: --- Input validation --------------------------------------------------
 if "%varName%"=="" (
@@ -669,79 +1295,81 @@ if not exist "%ZeymalFiles%\" (
     exit /b 1
 )
 
-:: --- Skip only if an existing file looks complete ----------------------
-if exist "!fileDest!" (
-    set "existingSize=0"
-    for %%A in ("!fileDest!") do set "existingSize=%%~zA"
-    if !existingSize! GEQ %minSize% (
-        echo     [ OK  ] Already exists ^(!existingSize! bytes^). Skipping.
-        echo            !fileDest!
-        exit /b 0
-    )
-    echo     [WARN ] Existing file too small ^(!existingSize! bytes^). Re-downloading.
-    del /f /q "!fileDest!" >nul 2>&1
-)
-
 :: --- Pick a downloader (curl preferred, PowerShell fallback) ----------
 set "haveCurl=0"
 where curl.exe >nul 2>&1
 if !errorlevel! equ 0 set "haveCurl=1"
 
-set "isZip=0"
-if /I "!fileName:~-4!"==".zip" set "isZip=1"
-
 set "attempt=0"
 set "maxAttempts=3"
+
+:: --- The old script downloaded into C:\Users\RT\zeymal\files: move its copy rather than download again
+if not exist "!fileDest!" if exist "%legacyFiles%\!fileName!" (
+    echo     Moving the copy left in %legacyFiles% ...
+    move /y "%legacyFiles%\!fileName!" "!fileDest!" >nul 2>&1
+)
+
+:: --- Reuse an existing copy only if it verifies ---------------------
+if exist "!fileDest!" (
+    call :VerifyDownload "!fileDest!" "!fileUrl!"
+    if !errorlevel! equ 0 (
+        echo     [ OK  ] Already downloaded and verified. Skipping.
+        echo            !fileDest!
+        exit /b 0
+    )
+    echo     [WARN ] The existing copy is incomplete or damaged. Downloading it again.
+    del /f /q "!fileDest!" >nul 2>&1
+)
+if exist "!filePart!" (
+    call :VerifyDownload "!filePart!" "!fileUrl!"
+    if !errorlevel! equ 0 goto :DZI_accept
+    echo     A partial download was left by an earlier attempt; resuming it.
+)
 
 :DZI_retry
 set /a attempt+=1
 echo     Attempt !attempt!/%maxAttempts% ...
 
 if "!haveCurl!"=="1" (
-    curl.exe -L --fail --show-error --connect-timeout 30 -o "!fileDest!" "!fileUrl!"
+    curl.exe -L --fail --show-error --connect-timeout 30 --speed-limit 1024 --speed-time 120 -C - -o "!filePart!" "!fileUrl!"
     set "dlRc=!errorlevel!"
 ) else (
+    del /f /q "!filePart!" >nul 2>&1
     set "DL_URL=!fileUrl!"
-    set "DL_DEST=!fileDest!"
+    set "DL_DEST=!filePart!"
     powershell -NoProfile -ExecutionPolicy Bypass -Command "try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; (New-Object System.Net.WebClient).DownloadFile($env:DL_URL, $env:DL_DEST); exit 0 } catch { Write-Host ('     [ERROR] ' + $_.Exception.Message); exit 1 }"
     set "dlRc=!errorlevel!"
     set "DL_URL="
     set "DL_DEST="
 )
 
+:: A dropped connection keeps the .part for curl to resume. It is deleted when the server
+:: refused the request or the resume (curl 22, 33, 36) or the file could not be written (23).
 if !dlRc! neq 0 (
     echo     [ERROR] Downloader exited with code !dlRc!.
-    if exist "!fileDest!" del /f /q "!fileDest!" >nul 2>&1
+    for %%C in (22 23 33 36) do if !dlRc! equ %%C del /f /q "!filePart!" >nul 2>&1
+    if !dlRc! equ 23 echo             The file could not be written: check free space on !DownloadPath:~0,2!
     goto :DZI_check_retry
 )
 
+call :VerifyDownload "!filePart!" "!fileUrl!"
+if !errorlevel! neq 0 (
+    echo     [ERROR] The download did not verify. Deleting it.
+    del /f /q "!filePart!" >nul 2>&1
+    goto :DZI_check_retry
+)
+
+:DZI_accept
+:: A new copy must be extracted again, so drop the old one's marker.
+del /f /q "!fileDest!.extracted" >nul 2>&1
+move /y "!filePart!" "!fileDest!" >nul 2>&1
 if not exist "!fileDest!" (
-    echo     [ERROR] File was not created after download.
+    echo     [ERROR] Could not rename the download to !fileName!.
     goto :DZI_check_retry
 )
-
 set "dlSize=0"
 for %%A in ("!fileDest!") do set "dlSize=%%~zA"
-if !dlSize! LSS %minSize% (
-    echo     [ERROR] Downloaded file too small ^(!dlSize! bytes^).
-    echo             Likely an error/redirect page rather than the real asset.
-    del /f /q "!fileDest!" >nul 2>&1
-    goto :DZI_check_retry
-)
-
-if "!isZip!"=="1" (
-    set "ZIP_PATH=!fileDest!"
-    powershell -NoProfile -Command "try { Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction SilentlyContinue; $z = [System.IO.Compression.ZipFile]::OpenRead($env:ZIP_PATH); $z.Dispose(); exit 0 } catch { exit 1 }"
-    set "zipRc=!errorlevel!"
-    set "ZIP_PATH="
-    if !zipRc! neq 0 (
-        echo     [ERROR] File is not a valid ZIP archive.
-        del /f /q "!fileDest!" >nul 2>&1
-        goto :DZI_check_retry
-    )
-)
-
-echo     [ OK  ] Saved !dlSize! bytes to: !fileDest!
+echo     [ OK  ] Saved and verified !dlSize! bytes: !fileDest!
 exit /b 0
 
 :DZI_check_retry
@@ -753,6 +1381,27 @@ if !attempt! LSS %maxAttempts% (
 echo     [ERROR] Download failed after %maxAttempts% attempts.
 echo             URL: !fileUrl!
 exit /b 1
+
+
+:: ============================================================
+:: :VerifyDownload <file> <url> - returns 0 when <file> is a whole,
+:: undamaged copy of <url>:
+::   - at least 10 KB (not an error page)
+::   - the size the server reports (Content-Length)
+::   - the MD5 the server reports: DigitalOcean Spaces, like S3,
+::     sends a file's MD5 as its ETag when it was uploaded in one
+::     part (a multipart ETag has a "-" and is not checked)
+::   - a .zip opens as a ZIP archive
+:: When the server can't be reached, only the file itself is checked.
+:: ============================================================
+:VerifyDownload
+set "VF_PATH=%~1"
+set "VF_URL=%~2"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$p = $env:VF_PATH; try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch {}; if (-not (Test-Path -LiteralPath $p)) { exit 1 }; $len = (Get-Item -LiteralPath $p).Length; if ($len -lt 10240) { Write-Host ('     [CHECK] Only {0} bytes.' -f $len); exit 1 }; $size = -1; $etag = ''; try { $rq = [Net.WebRequest]::Create($env:VF_URL); $rq.Method = 'HEAD'; $rq.Timeout = 30000; $rs = $rq.GetResponse(); $size = $rs.ContentLength; $etag = ([string]$rs.Headers['ETag']).Trim([char]34); $rs.Close() } catch { Write-Host '     [CHECK] Server not reachable; checking the file alone.' }; if ($size -gt 0 -and $len -ne $size) { Write-Host ('     [CHECK] {0} of {1} bytes.' -f $len, $size); exit 1 }; if ($etag -match '^[0-9a-fA-F]{32}$') { $md5 = $null; try { $fs = [IO.File]::OpenRead($p); try { $md5 = -join ([Security.Cryptography.MD5]::Create().ComputeHash($fs) | ForEach-Object { $_.ToString('x2') }) } finally { $fs.Dispose() } } catch {}; if ($md5 -and $md5 -ne $etag.ToLower()) { Write-Host '     [CHECK] Checksum differs from the server copy.'; exit 1 } }; if ($p -match '\.zip(\.part)?$') { try { Add-Type -AssemblyName System.IO.Compression.FileSystem; $z = [IO.Compression.ZipFile]::OpenRead($p); $n = $z.Entries.Count; $z.Dispose(); if ($n -lt 1) { throw 'empty' } } catch { Write-Host '     [CHECK] Not a valid ZIP archive.'; exit 1 } }; exit 0"
+set "vfRc=!errorlevel!"
+set "VF_PATH="
+set "VF_URL="
+exit /b %vfRc%
 
 
 :: ============================================================
@@ -807,6 +1456,12 @@ set "JavaZip=%ZeymalFiles%\jre-8u271-windows-i586-iftw.zip"
 set "JavaExtractDir=%ZeymalFiles%\jre_extract"
 set "JavaInstaller=%JavaExtractDir%\jre-8u271-windows-i586-iftw.exe"
 
+call :JavaInstalled
+if defined javaOk (
+    echo   [ OK  ] Java JRE 8u271 is already installed. Skipping.
+    exit /b 0
+)
+
 if not exist "%JavaInstaller%" (
     call :ExtractZip "%JavaZip%" "%JavaExtractDir%" "Java JRE 8u271 installer"
     if !errorlevel! neq 0 (
@@ -835,44 +1490,121 @@ exit /b 0
 
 
 :: ============================================================
-:: Deploy Zeymal files: extract (Z_Replace_Base).zip into the app
-:: folder and copy Zeymal.jar / .exe / jre alongside.
+:: Deploy Zeymal files: extract (Z_Replace_Base).zip (step 9.5
+:: copies it into the app folder) and Zeymal.zip (the Zeymal.exe
+:: installer) into the downloads folder.
 :: ============================================================
 :DeployZeymalFiles
-set "ZeymalFiles=%appFolder%\files"
+call :CheckDone
 
-call :ExtractZip "%ZeymalFiles%\(Z_Replace_Base).zip" "%appFolder%" "(Z_Replace_Base).zip"
-if !errorlevel! neq 0 call :ackWarn
-
-call :ExtractZip "%ZeymalFiles%\Zeymal.zip" "%appFolder%" "Zeymal.zip"
-if !errorlevel! neq 0 call :ackWarn
-
-set "javaExe=%ZeymalFiles%\jre_extract\jre-8u271-windows-i586-iftw.exe"
-if exist "%javaExe%" (
-    copy /Y "%javaExe%" "%appFolder%\jre-8u271-windows-i586-iftw.exe" >nul
-    if !errorlevel! equ 0 (
-        echo   [ OK  ] Copied Java installer into %appFolder%
-    ) else (
-        echo   [WARN ] Failed to copy Java installer into %appFolder%.
-    )
+if defined doneBase (
+    echo   [ OK  ] The base files are already in place. Skipping.
 ) else (
-    echo   [WARN ] Java installer not found at %javaExe%. Skipping copy.
+    call :ExtractZip "%ZeymalFiles%\(Z_Replace_Base).zip" "%ZeymalFiles%" "(Z_Replace_Base).zip"
+    if !errorlevel! neq 0 call :ackWarn
+)
+
+if defined doneInstaller (
+    echo   [ OK  ] Zeymal is already installed. Skipping its installer.
+) else (
+    if not exist "%DownloadPath%\Zeymal.exe" del /f /q "%ZeymalFiles%\Zeymal.zip.extracted" >nul 2>&1
+    call :ExtractZip "%ZeymalFiles%\Zeymal.zip" "%DownloadPath%" "Zeymal.zip"
+    if !errorlevel! neq 0 call :ackWarn
 )
 exit /b 0
 
-:CopyToProgramFiles
+
+:: ============================================================
+:: :RunZeymalInstaller - asks the operator to run Zeymal.exe and to
+:: install into the app folder, unless Zeymal is already installed.
+:: An install that lands in Program Files on C: instead is caught,
+:: and the operator is asked to install it again into the app folder.
+:: ============================================================
+:RunZeymalInstaller
+call :CheckDone
+if defined oldInstall (
+    echo   [ OK  ] Zeymal is already installed in !oldInstall!. Not installed again.
+    echo.
+    exit /b 0
+)
+if defined doneInstaller (
+    echo   [ OK  ] Zeymal is already installed in !appFolder!. Not installed again.
+    echo.
+    exit /b 0
+)
+set "pf86=%ProgramFiles(x86)%\Zeymal"
+set "pf64=%ProgramFiles%\Zeymal"
+set "had86=" & set "had64="
+if exist "!pf86!\" set "had86=1"
+if exist "!pf64!\" set "had64=1"
+
+echo ============================================================
+echo.
+echo   ACTION REQUIRED: Install the Zeymal application
+echo.
+echo   The Zeymal installer is located here:
+echo.
+echo     %DownloadPath%\Zeymal.exe
+echo.
+echo   Run it now. When it asks where to install, choose this folder
+echo   ^(not a C:\Program Files folder it may suggest^):
+echo.
+echo     %appFolder%
+echo.
+echo   When you are done, press any key to continue setup.
 echo.
 echo ============================================================
-echo [9.5/13] DEBUG - CopyToProgramFiles
+echo.
+pause >nul
+:RZI_check
+set "wrongDir="
+if not defined had86 if exist "!pf86!\" set "wrongDir=!pf86!"
+if not defined had64 if exist "!pf64!\" set "wrongDir=!pf64!"
+if not defined wrongDir (
+    echo.
+    exit /b 0
+)
+echo   [WARN ] Zeymal was installed in !wrongDir!, on the system drive.
+echo           Uninstall it ^(Control Panel ^> Programs^), run Zeymal.exe again and
+echo           choose !appFolder!.
+choice /c RC /m "  R = check again after reinstalling, C = continue anyway"
+if errorlevel 2 (
+    echo.
+    exit /b 0
+)
+goto :RZI_check
+
+
+:: ============================================================
+:: :CopyBaseFiles - copies the extracted (Z_Replace_Base) over the
+:: Zeymal installed in the app folder. Once only.
+:: ============================================================
+:CopyBaseFiles
+echo.
+echo ============================================================
+echo [9.5/13] Copying the base files
 echo ============================================================
 
-set "sourceFolder=%appFolder%\(Z_Replace_Base)"
-set "destFolder=%ProgramFiles(x86)%\Zeymal"
+set "sourceFolder=%ZeymalFiles%\(Z_Replace_Base)"
+set "destFolder=%appFolder%"
 
 echo.
 echo Source Folder      : "%sourceFolder%"
 echo Destination Folder : "%destFolder%"
 echo.
+
+:: Once only: a second copy would overwrite the settings and any updated Zeymal.jar.
+call :CheckDone
+if defined oldInstall (
+    echo   [ OK  ] Zeymal runs from !oldInstall!, installed by an earlier setup.
+    echo           It is left as it is: the base files are not copied again.
+    exit /b 0
+)
+if defined doneBase (
+    echo   [ OK  ] Copied on an earlier run. Not copied again, so the settings and
+    echo           updates already in the app folder are kept.
+    exit /b 0
+)
 
 echo Checking source folder...
 if exist "%sourceFolder%" (
@@ -882,25 +1614,6 @@ if exist "%sourceFolder%" (
     dir "%sourceFolder%" 2>nul
     pause
     exit /b 1
-)
-
-echo.
-echo Checking destination folder...
-if exist "%destFolder%" (
-    echo   [OK] Destination folder already exists.
-) else (
-    echo   [INFO] Destination folder does not exist.
-    echo   Creating "%destFolder%"...
-    mkdir "%destFolder%"
-    echo   mkdir Exit Code = %ERRORLEVEL%
-
-    if errorlevel 1 (
-        echo   [ERROR] Failed to create destination folder.
-        pause
-        exit /b 1
-    )
-
-    echo   [OK] Destination folder created.
 )
 
 echo.
@@ -925,6 +1638,15 @@ echo ============================================================
 echo Robocopy Exit Code : %RC%
 echo.
 
+:: Robocopy exit codes 8 and above mean some files were not copied.
+if %RC% GEQ 8 (
+    echo [ERROR] Robocopy could not copy every file. The downloaded base files are kept
+    echo         so the next run can copy them again.
+    echo ============================================================
+    pause
+    exit /b 1
+)
+call :RegSet BaseCopied 1
 
 echo [SUCCESS] Copy and registration completed successfully.
 echo ============================================================
@@ -1007,6 +1729,17 @@ if not exist "%appcmd%" (
     exit /b 0
 )
 
+:: A server set up by the old script keeps the school's files in C:\Users\RT\zeymal. They move
+:: to the app folder now, right before IIS and FTP are pointed there. If the move fails, IIS
+:: and FTP are left on the old folder so nothing goes missing; the next run tries again.
+if exist "%legacyApp%\" (
+    call :MoveOldAppFolder
+    if !errorlevel! neq 0 (
+        call :ackWarn
+        exit /b 0
+    )
+)
+
 echo   Creating virtual directory "RT" under Default Web Site...
 "%appcmd%" delete vdir "Default Web Site/RT" >nul 2>&1
 "%appcmd%" add vdir /app.name:"Default Web Site/" /path:"/RT" /physicalPath:"%appFolder%" /userName:"%newUser%" /password:"%newPassword%"
@@ -1061,20 +1794,54 @@ exit /b 0
 
 
 :: ============================================================
+:: :MoveOldAppFolder - moves the school's files (photos, documents,
+:: plugins...) from the old script's C:\Users\RT\zeymal into the app
+:: folder. The FTP site is stopped first, so nothing is written there
+:: during the move. Setup's own leftovers (files\, the extracted
+:: base, Zeymal.exe, the Java installer) are not moved: the cleanup
+:: deletes them. Returns 1 when some files could not be moved.
+:: ============================================================
+:MoveOldAppFolder
+echo   Moving the school's files from %legacyApp% to %appFolder% ...
+"%appcmd%" stop site "RT" >nul 2>&1
+robocopy "%legacyApp%" "%appFolder%" /E /MOVE /COPY:DAT /R:2 /W:2 /NP /NFL /NDL /XD "%legacyFiles%" "%legacyApp%\(Z_Replace_Base)" /XF "%legacyApp%\Zeymal.exe" "%legacyApp%\jre-8u271-windows-i586-iftw.exe"
+set "mvRc=!errorlevel!"
+if !mvRc! GEQ 8 (
+    echo   [ERROR] Some files could not be moved ^(robocopy exit !mvRc!^). IIS and FTP still
+    echo           use %legacyApp%. Close whatever holds those files, then run setup.bat again.
+    "%appcmd%" start site "RT" >nul 2>&1
+    exit /b 1
+)
+echo   [ OK  ] Moved. %legacyApp% keeps only setup's leftovers, deleted at the end.
+exit /b 0
+
+
+:: ============================================================
 :: Restore the Ashley database from Z_Reset*.zip
 :: ============================================================
 :RestoreAshleyDb
-set "resetZip=%appFolder%\files\Z_Reset_1034.zip"
-set "restoreDir=%appFolder%\files\ashley_restore"
-
-if not exist "%resetZip%" (
-    echo   [SKIP ] Z_Reset_1034.zip not found; skipping DB restore.
-    exit /b 0
-)
+set "resetZip=%ZeymalFiles%\Z_Reset_1034.zip"
+set "restoreDir=%ZeymalFiles%\ashley_restore"
 
 sc query "MSSQL$SQLEXPRESS" >nul 2>&1
 if !errorlevel! neq 0 (
     echo   [SKIP ] MSSQL$SQLEXPRESS not installed; skipping DB restore.
+    exit /b 0
+)
+
+:: Never overwrite a school's data. setup.bat is meant to be run again after a reboot, and step 13
+:: runs every time, so an existing [Ashley] database is left exactly as it is. If the check itself
+:: gets no answer, nothing is restored either (below): better to stop than to guess.
+call :QueryAshleyDb
+if /i "!dbExists!"=="YES" (
+    echo   [SKIP ] The "Ashley" database already exists on .\SQLEXPRESS - it was NOT restored.
+    echo           A re-run never overwrites a school's data. To start over on purpose, drop
+    echo           the database first ^(SSMS^), then run setup.bat again.
+    exit /b 0
+)
+
+if not exist "%resetZip%" (
+    echo   [SKIP ] Z_Reset_1034.zip not found; skipping DB restore.
     exit /b 0
 )
 
@@ -1107,32 +1874,19 @@ if not defined bakFile (
 )
 echo   Backup file: !bakFile!
 
-where sqlcmd >nul 2>&1
+call :FindSqlcmd
 if !errorlevel! neq 0 (
-    echo   [SKIP ] sqlcmd not found on PATH. Install SSMS/mssql-tools, then restore manually
+    echo   [SKIP ] sqlcmd not found. Install SSMS/mssql-tools, then restore manually
     echo           using SSMS ^(Restore Database ^> Options ^> Relocate files^) or via sqlcmd
     echo           with WITH MOVE to your server's default DATA folder ^(the .bak was created
     echo           on a different install path, so a straight RESTORE will fail with error 3156^).
     exit /b 0
 )
 
-:: Never overwrite a school's data. setup.bat is meant to be run again after a reboot, and step 13
-:: runs every time, so an existing [Ashley] database is left exactly as it is. If the check itself
-:: gets no answer, nothing is restored either: better to stop than to guess.
-set "dbExists="
-set "DB_CHECK=SET NOCOUNT ON; SELECT CASE WHEN DB_ID(N'Ashley') IS NULL THEN 'NO' ELSE 'YES' END"
-for /f "usebackq delims=" %%R in (`sqlcmd -S .\SQLEXPRESS -U sa -P "%sqlSaPassword%" -C -h -1 -W -b -Q "%DB_CHECK%" 2^>nul`) do set "dbExists=%%R"
-if not defined dbExists for /f "usebackq delims=" %%R in (`sqlcmd -S .\SQLEXPRESS -U sa -P "%sqlSaPassword%" -h -1 -W -b -Q "%DB_CHECK%" 2^>nul`) do set "dbExists=%%R"
-set "DB_CHECK="
-if /i "!dbExists!"=="YES" (
-    echo   [SKIP ] The "Ashley" database already exists on .\SQLEXPRESS - it was NOT restored.
-    echo           A re-run never overwrites a school's data. To start over on purpose, drop
-    echo           the database first ^(SSMS^), then run setup.bat again.
-    exit /b 0
-)
 if /i not "!dbExists!"=="NO" (
     echo   [WARN ] Could not check whether the "Ashley" database exists, so it was NOT restored.
-    echo           Make sure SQL Server ^(MSSQL$SQLEXPRESS^) is running and the sa password is right,
+    echo           Make sure SQL Server ^(MSSQL$SQLEXPRESS^) is running and setup can sign in to it ^(a
+    echo           restricted server needs the sa password at step 3^),
     echo           then run setup.bat again.
     call :ackWarn
     exit /b 0
@@ -1140,11 +1894,11 @@ if /i not "!dbExists!"=="NO" (
 
 echo   Restoring "Ashley" via sqlcmd ^(with WITH MOVE to this server's default data folder^)...
 set "RESTORE_SQL=SET NOCOUNT ON; DECLARE @dataPath NVARCHAR(500)=ISNULL(CAST(SERVERPROPERTY('InstanceDefaultDataPath') AS NVARCHAR(500)),N'C:\'); DECLARE @logPath NVARCHAR(500)=ISNULL(CAST(SERVERPROPERTY('InstanceDefaultLogPath') AS NVARCHAR(500)),@dataPath); DECLARE @mdf NVARCHAR(500)=@dataPath+N'Ashley.mdf'; DECLARE @ldf NVARCHAR(500)=@logPath+N'Ashley_log.ldf'; RESTORE DATABASE [Ashley] FROM DISK=N'$(BAKPATH)' WITH NOUNLOAD, STATS=10, MOVE N'Ashley' TO @mdf, MOVE N'Ashley_log' TO @ldf;"
-sqlcmd -S .\SQLEXPRESS -U sa -P "%sqlSaPassword%" -C -b -v BAKPATH="!bakFile!" -Q "!RESTORE_SQL!"
+sqlcmd -S .\SQLEXPRESS %SQLAUTH% -C -b -v BAKPATH="!bakFile!" -Q "!RESTORE_SQL!"
 set "restoreRc=!errorlevel!"
 if !restoreRc! neq 0 (
     echo   [INFO ] Retrying without -C flag ^(older sqlcmd^)...
-    sqlcmd -S .\SQLEXPRESS -U sa -P "%sqlSaPassword%" -b -v BAKPATH="!bakFile!" -Q "!RESTORE_SQL!"
+    sqlcmd -S .\SQLEXPRESS %SQLAUTH% -b -v BAKPATH="!bakFile!" -Q "!RESTORE_SQL!"
     set "restoreRc=!errorlevel!"
 )
 set "RESTORE_SQL="

@@ -8,10 +8,20 @@
   SECTION 1 - CREDENTIALS & PASSWORDS  (keep this safe)
 =====================================================================
 
+  RT's password includes the year of the FIRST setup run (YY = its
+  last two digits); sa's includes the day SQL Server was installed
+  (YYMMDD). Setup saves both in HKLM\SOFTWARE\RationalTabs\ZeymalSetup
+  (PasswordYear, SqlInstallDate) - never the passwords themselves -
+  so a re-run, even in a later year, keeps them. Examples use
+  3 November 2026.
+
   Windows user account
   --------------------
   Username  : RT
-  Password  : master
+  Password  : masterYY  (e.g. master26)
+              On a server whose RT already has another password (older
+              setups used "master"), setup asks before changing it, then
+              updates IIS, FTP and the app's network sources to match.
   Group     : Administrators
   Setting   : Password never expires
 
@@ -19,21 +29,29 @@
   ----------
   Instance  : .\SQLEXPRESS   (also reachable as localhost\SQLEXPRESS)
   SA login  : sa
-  SA pass   : Zeymal@1034
+  SA pass   : asked when SQL Server is installed: what you type +
+              #YYMMDD of that day (press Enter for DbPass#261103).
+              Shown on screen and in the summary; setup does not store
+              it. The school's Zeymal config (Load Config) must use it.
   Mode      : SQL Server Authentication (mixed mode)
+  Sign-in   : sa ONLY once setup has finished: Windows sign-in to SQL
+              Server is turned off at the end (SECTION 14). A later
+              run therefore asks for the sa password at step 3 (the
+              part before #YYMMDD is enough; Enter skips the database
+              steps).
   Port      : TCP 1433
 
   IIS Virtual Directory
   ---------------------
   URL       : http://localhost/RT
-  User      : RT  /  master
+  User      : RT  /  masterYY
 
   FTP Site
   --------
   URL       : ftp://localhost/
   Site name : RT
   Port      : 21
-  User      : RT  /  master
+  User      : RT  /  masterYY
   Auth      : Basic Authentication (anonymous is disabled)
   SSL       : SslAllow  (SSL allowed but not required)
 
@@ -46,43 +64,74 @@
   SECTION 2 - FOLDERS CREATED
 =====================================================================
 
-  C:\Users\RT\
-      The home folder of the RT user account.
-      Everything Zeymal-related lives under here.
+  Setup asks once for the Zeymal folder (step 4), which Zeymal is
+  installed into. It suggests one on
+  the drive with the most free space that is NOT the system drive,
+  e.g. D:\Zeymal, and never accepts a folder under C:\Users. Only when
+  no other NTFS drive with 4 GB free exists does it suggest C:\Zeymal.
+  The paths below use D: as the example.
 
-  C:\Users\RT\zeymal\
-      Main application folder.
-      All Zeymal files, configs, and extracted zips land here.
-      Called "appFolder" inside the script.
+  The choice is saved in the registry, so a re-run (e.g. after the IIS
+  reboot) uses the same folders without asking:
+      HKLM\SOFTWARE\RationalTabs\ZeymalSetup
+          AppFolder       the app folder
+          DownloadFolder  the downloads folder
+          BaseCopied      1 once (Z_Replace_Base) is in the app folder
+  An IIS /RT folder an earlier setup created elsewhere than C:\Users
+  is kept.
 
-  C:\Users\RT\zeymal\files\
-      Staging/downloads folder.
-      The 4 zip files downloaded from the Zeymal server are saved here
-      and stay here permanently so re-runs can skip re-downloading.
+  On a server set up by the old script, the school's files in
+  C:\Users\RT\zeymal are moved into the new folder at step 12, right
+  before IIS and FTP are pointed at it (the FTP site is stopped
+  during the move). If a file can't be moved, IIS and FTP stay on
+  the old folder and the next run tries again. Zeymal itself stays
+  where that setup installed it, C:\Program Files (x86)\Zeymal:
+  it is not installed again and gets no base files again.
 
-  C:\Users\RT\zeymal\files\jre_extract\
+  Both folders get full control for Administrators and SYSTEM, and
+  setup writes a test file into each before using it: a folder it
+  cannot write to stops the run at step 4/5 with a clear message
+  instead of leaving a broken download behind.
+
+  D:\Zeymal\
+      The app folder ("appFolder" inside the script): Zeymal is
+      installed here (step 9) and the base files are copied over it
+      (step 9.5). It is also the IIS /RT virtual directory and the
+      FTP root: the app keeps its photos, documents and plugins here
+      (it uploads them over FTP as RT, so RT gets Modify rights).
+
+  D:\Zeymal-Setup\
+      Everything setup downloads ("DownloadPath" inside the script),
+      including Zeymal.exe, the installer you run at step 9.
+      On the app folder's drive, or on the other drive when the app
+      folder is on C:. Kept out of the app folder, so IIS and FTP
+      never serve it. Each item is deleted once what it installs is
+      in place (SECTION 13), and the folder goes when it is empty.
+
+  D:\Zeymal-Setup\files\
+      The 4 zip files downloaded from the Zeymal server.
+
+  D:\Zeymal-Setup\files\(Z_Replace_Base)\
+      The extracted base files, copied into the app folder (step 9.5).
+
+  D:\Zeymal-Setup\files\jre_extract\
       Temporary extraction folder for the Java installer zip.
       The actual Java installer exe is pulled out of here before running.
 
-  C:\Users\RT\zeymal\files\ashley_restore\
+  D:\Zeymal-Setup\files\ashley_restore\
       Temporary extraction folder for the Ashley database backup zip.
       The .bak file is pulled out of here for the SQL restore.
 
-  C:\Users\RT\Downloads\
-      Staging folder for large third-party installers
-      (SQL Server bootstrapper, SQL media, SSMS installer).
-      Called "DownloadPath" inside the script.
+  D:\Zeymal-Setup\SQLMedia\
+      Where the SQL Server 2022 media (~280 MB) is downloaded.
 
-  C:\Users\RT\Downloads\SQLMedia\
-      Where the SQL Server 2022 media (~280 MB) is downloaded and kept.
-
-  C:\Users\RT\Downloads\SQLMedia\extract\
+  D:\Zeymal-Setup\SQLMedia\extract\
       Where the SQL Server media is extracted before running setup.exe.
 
-  C:\Program Files (x86)\Zeymal\
-      Final install destination for Zeymal core files.
-      The contents of (Z_Replace_Base) folder are copied here
-      using robocopy after the manual Zeymal installer runs.
+  Nothing goes into C:\Program Files (x86)\Zeymal any more. The base
+  files are copied into the app folder ONCE: a re-run does not copy
+  them again, because that would overwrite the settings and any
+  updated Zeymal.jar.
 
 
 =====================================================================
@@ -92,16 +141,34 @@
   All Zeymal files come from:
       https://zml-installer.blr1.digitaloceanspaces.com/
 
+  How every Zeymal file is downloaded
+  -----------------------------------
+  Not at all when what it installs is already in place (listed per
+  file below), e.g. on the re-run after the IIS reboot.
+  Otherwise it is downloaded into "<name>.part" and renamed to its
+  real name only after it is checked against the server:
+    - the size the server reports,
+    - the MD5 checksum the server reports (its ETag),
+    - a .zip must open as a ZIP archive.
+  So a file with the real name is always complete. An existing file
+  is checked the same way before it is reused; a broken one is
+  downloaded again. curl resumes a .part left by a dropped
+  connection. 3 attempts per file.
+  A zip the old script left in C:\Users\RT\zeymal\files is moved
+  into D:\Zeymal-Setup\files and checked, not downloaded again.
+
   ---------------------------------------------------------------
   FILE 1: (Z_Replace_Base).zip
   ---------------------------------------------------------------
-  Downloaded to : C:\Users\RT\zeymal\files\(Z_Replace_Base).zip
-  Extracted to  : C:\Users\RT\zeymal\(Z_Replace_Base)\
-  Then copied   : C:\Users\RT\zeymal\(Z_Replace_Base)\
-                  --> C:\Program Files (x86)\Zeymal\  (robocopy)
+  Downloaded to : D:\Zeymal-Setup\files\(Z_Replace_Base).zip
+  Extracted to  : D:\Zeymal-Setup\files\(Z_Replace_Base)\
+  Then copied   : D:\Zeymal-Setup\files\(Z_Replace_Base)\
+                  --> D:\Zeymal\  (robocopy, once)
   Contents      : Core Zeymal application files that replace
                   the default install (configs, libraries, etc.)
-  Skip logic    : If zip already exists and is >= 10 KB, skipped.
+  Not needed    : once it has been copied into the app folder, or
+                  when an earlier setup installed Zeymal in
+                  C:\Program Files (x86)\Zeymal.
   Extract skip  : A marker file "(Z_Replace_Base).zip.extracted"
                   is created next to the zip after extraction.
                   If that marker exists, extraction is skipped.
@@ -109,55 +176,71 @@
   ---------------------------------------------------------------
   FILE 2: jre-8u271-windows-i586-iftw.zip
   ---------------------------------------------------------------
-  Downloaded to : C:\Users\RT\zeymal\files\jre-8u271-windows-i586-iftw.zip
-  Extracted to  : C:\Users\RT\zeymal\files\jre_extract\
-  Installer exe : C:\Users\RT\zeymal\files\jre_extract\
+  Downloaded to : D:\Zeymal-Setup\files\jre-8u271-windows-i586-iftw.zip
+  Extracted to  : D:\Zeymal-Setup\files\jre_extract\
+  Installer exe : D:\Zeymal-Setup\files\jre_extract\
                       jre-8u271-windows-i586-iftw.exe
-  Copy of exe   : C:\Users\RT\zeymal\jre-8u271-windows-i586-iftw.exe
-                  (a copy is placed in the app folder for reference)
   Purpose       : Java Runtime Environment 8 update 271 (32-bit).
                   Zeymal is a Java application and requires Java 8.
   Install flags : /s AUTO_UPDATE=Disable STATIC=1 REBOOT=Disable
                   EULA=Disable NOSTARTMENU=Enable WEB_ANALYTICS=Disable
                   (silent install, no start menu, no auto update)
+  Not needed    : once JRE 8u271 is installed. Java is not
+                  reinstalled on re-runs. (The base files also
+                  carry this installer, in D:\Zeymal\__\.)
 
   ---------------------------------------------------------------
   FILE 3: Zeymal.zip
   ---------------------------------------------------------------
-  Downloaded to : C:\Users\RT\zeymal\files\Zeymal.zip
-  Extracted to  : C:\Users\RT\zeymal\
-  Key file out  : C:\Users\RT\zeymal\Zeymal.exe
+  Downloaded to : D:\Zeymal-Setup\files\Zeymal.zip
+  Extracted to  : D:\Zeymal-Setup\
+  Key file out  : D:\Zeymal-Setup\Zeymal.exe
                   (the Zeymal application installer)
   Purpose       : The main Zeymal program package.
                   After extraction you manually run Zeymal.exe
-                  to complete the Zeymal installation wizard.
+                  and install Zeymal into D:\Zeymal (SECTION 11).
+  Not needed    : once Zeymal is installed (Zeymal.jar in D:\Zeymal,
+                  or an earlier setup's C:\Program Files (x86)\Zeymal).
 
   ---------------------------------------------------------------
   FILE 4: Z_Reset_1034.zip
   ---------------------------------------------------------------
-  Downloaded to : C:\Users\RT\zeymal\files\Z_Reset_1034.zip
-  Extracted to  : C:\Users\RT\zeymal\files\ashley_restore\
+  Downloaded to : D:\Zeymal-Setup\files\Z_Reset_1034.zip
+  Extracted to  : D:\Zeymal-Setup\files\ashley_restore\
   Backup file   : A .bak file inside that folder (SQL Server backup).
                   If the file has no extension, the script checks
                   for a TAPE header and renames it to Ashley.bak.
   Purpose       : SQL Server database backup for the Ashley database.
                   Restored into SQL Server in the final step.
+  Not needed    : once the Ashley database exists.
 
   ---------------------------------------------------------------
-  INSTALLER FILES (downloaded to C:\Users\RT\Downloads\)
+  INSTALLER FILES (downloaded to D:\Zeymal-Setup\)
   ---------------------------------------------------------------
+  Each is downloaded into "<name>.part" and renamed only when the
+  transfer finished with the size the server announced. A download
+  that receives no data for 5 minutes is abandoned.
 
   SQL2022-SSEI-Expr.exe
       SQL Server 2022 Express bootstrapper (small, ~5 MB).
       Used only to download the full media package.
-      Source: go.microsoft.com/fwlink/p/?linkid=2216019...
+      Source: download.microsoft.com (SQL2022-SSEI-Expr.exe), else
+              go.microsoft.com/fwlink/p/?linkid=2215160.
+      Used only if it is signed by Microsoft and is version 16
+      (SQL Server 2022). Microsoft's general "SQL Server 2022 Express"
+      link (linkid=2216019) now gives SQL Server 2025, which setup
+      must not install, so it is no longer used.
 
-  C:\Users\RT\Downloads\SQLMedia\SQLEXPR_x64_ENU.exe
+  D:\Zeymal-Setup\SQLMedia\SQLEXPR_x64_ENU.exe
       Full SQL Server 2022 Express media package (~280 MB).
+      Media of another version left by an earlier attempt is deleted
+      and downloaded again; setup.exe is checked the same way.
       Downloaded by the bootstrapper above.
-      Extracted to: C:\Users\RT\Downloads\SQLMedia\extract\
+      Extracted to: D:\Zeymal-Setup\SQLMedia\extract\
+      If it does not extract (e.g. an interrupted download), it is
+      deleted so the next run downloads it again.
 
-  C:\Users\RT\Downloads\SQLMedia\extract\setup.exe
+  D:\Zeymal-Setup\SQLMedia\extract\setup.exe
       The actual SQL Server installer, run silently.
 
   SQLEXPRWT.exe   (Windows 7/8 only)
@@ -179,18 +262,29 @@
 
   Windows 10 / 11
   ---------------
-  Product       : SQL Server 2022 Express
+  Product       : SQL Server 2022 Express - ONLY 2022
+                  SQL Server 2025 (what Microsoft's general link now
+                  gives) failed here on PolyBase: "Cannot find the user
+                  '<PC>\PdwComputeNodeAccess'", and brings Azure and AI
+                  features. If SQLEXPRESS is already SQL Server 2025:
+                    - with the Ashley database in it: kept, as it is;
+                    - without it (e.g. a failed attempt): setup stops
+                      and asks to uninstall every "Microsoft SQL Server
+                      2025" entry, restart, and run setup.bat again.
+                  An unfinished install of another version stops it too.
   Instance name : SQLEXPRESS
   Service name  : MSSQL$SQLEXPRESS
-  Features      : SQLENGINE only (database engine, no SSRS/SSIS)
+  Features      : SQLENGINE only (database engine: no PolyBase,
+                  full-text, replication, SSRS/SSIS or Azure extension)
   Service acct  : NT Service\MSSQL$SQLEXPRESS  (during install)
                   Changed to LocalSystem after install (step 10)
-  SA password   : Zeymal@1034
+  SA password   : asked at install (SECTION 1)
   TCP/IP        : Enabled  (flag /TCPENABLED=1)
   Named Pipes   : Enabled  (flag /NPENABLED=1)
   Auth mode     : Mixed (SQL + Windows)  (/SECURITYMODE=SQL)
   Auto update   : Disabled  (/UPDATEENABLED=False)
-  Windows admins: BUILTIN\Administrators are SQL sysadmins
+  Windows admins: BUILTIN\Administrators are SQL sysadmins during setup;
+                  turned off at the end (SECTION 14)
   Setup logs    : %ProgramFiles%\Microsoft SQL Server\
                       160\Setup Bootstrap\Log
 
@@ -200,7 +294,7 @@
   Instance name : SQLEXPRESS
   Service acct  : NT AUTHORITY\Network Service  (during install)
                   Changed to LocalSystem after install (step 10)
-  SA password   : Zeymal@1034
+  SA password   : asked at install (SECTION 1)
   TCP/IP        : Enabled
   Auth mode     : Mixed
 
@@ -299,9 +393,9 @@
   -----------------------------------------------
   Site        : Default Web Site
   Path        : /RT
-  Physical    : C:\Users\RT\zeymal\
+  Physical    : D:\Zeymal\  (the app folder, SECTION 2)
   Username    : RT
-  Password    : master
+  Password    : masterYY
   URL         : http://localhost/RT
 
   MIME type added
@@ -315,8 +409,8 @@
   appcmd commands used:
     appcmd delete vdir "Default Web Site/RT"    (cleanup before recreate)
     appcmd add vdir /app.name:"Default Web Site/" /path:"/RT"
-              /physicalPath:"C:\Users\RT\zeymal"
-              /userName:"RT" /password:"master"
+              /physicalPath:"D:\Zeymal"
+              /userName:"RT" /password:"masterYY"
     appcmd set config "Default Web Site/RT" -section:staticContent
               /+"[fileExtension='.',mimeType='application/octet-stream']"
 
@@ -328,24 +422,24 @@
   FTP Site "RT"
   -------------
   Site name   : RT
-  Physical    : C:\Users\RT\zeymal\
+  Physical    : D:\Zeymal\  (the app folder, SECTION 2)
   Binding     : ftp/*:21:   (all IPs, port 21, no hostname)
   Auth        : Basic Authentication = enabled
                 Anonymous Authentication = disabled
   SSL control : SslAllow  (SSL optional on control channel)
   SSL data    : SslAllow  (SSL optional on data channel)
   Authorization: User "RT" has Read + Write access
-  Virtual dir : RT/  uses username RT / password master
+  Virtual dir : RT/  uses username RT / password masterYY
 
   appcmd commands used:
     appcmd delete site "RT"    (cleanup before recreate)
-    appcmd add site /name:"RT" /physicalPath:"C:\Users\RT\zeymal"
+    appcmd add site /name:"RT" /physicalPath:"D:\Zeymal"
                     /bindings:"ftp/*:21:"
     appcmd set site "RT" /ftpServer.security.ssl...
     appcmd set site "RT" /ftpServer.security.authentication...
     appcmd set config -section:system.ftpServer/security/authorization
               /+"[accessType='Allow',users='RT',permissions='Read,Write']"
-    appcmd set vdir "RT/" /userName:"RT" /password:"master"
+    appcmd set vdir "RT/" /userName:"RT" /password:"masterYY"
 
   FTP Firewall Rules
   ------------------
@@ -366,21 +460,26 @@
   SECTION 9 - ASHLEY DATABASE RESTORE (Step 13)
 =====================================================================
 
-  Source zip   : C:\Users\RT\zeymal\files\Z_Reset_1034.zip
-  Extract dir  : C:\Users\RT\zeymal\files\ashley_restore\
+  Never overwrites a school's data: if the Ashley database already
+  exists, nothing is restored (and the zip is not even downloaded).
+  To start over on purpose, drop the database first (SSMS).
+
+  Source zip   : D:\Zeymal-Setup\files\Z_Reset_1034.zip
+  Extract dir  : D:\Zeymal-Setup\files\ashley_restore\
   Backup file  : <first .bak file found in extract dir>
                  If no .bak extension, checks for TAPE header bytes
                  (54 41 50 45) and renames the file to Ashley.bak.
 
   Restore runs via sqlcmd:
     Server     : .\SQLEXPRESS
-    Login      : sa  /  Zeymal@1034
-    Database   : Ashley  (created fresh)
+    Login      : Windows authentication in the run that installs SQL
+                 Server; sa (asked at step 3) once it is restricted
+    Database   : Ashley  (only when it does not exist yet)
     Files moved to server's default data path:
       MDF  -->  <InstanceDefaultDataPath>\Ashley.mdf
       LDF  -->  <InstanceDefaultLogPath>\Ashley_log.ldf
     SQL used   : RESTORE DATABASE [Ashley] FROM DISK=N'<bakFile>'
-                 WITH REPLACE, NOUNLOAD, STATS=10,
+                 WITH NOUNLOAD, STATS=10,
                  MOVE N'Ashley' TO <mdf path>,
                  MOVE N'Ashley_log' TO <ldf path>
 
@@ -395,6 +494,11 @@
   If sqlcmd is not found on PATH, the step is skipped with
   instructions to restore manually via SSMS.
 
+  App FTP password: after the restore (and on every run), every
+  network source in dbo.Ash_NetworkSource whose user is RT gets RT's
+  password (the restored backup has "master"). The app reads these
+  at sign-in to upload photos, documents and letters over FTP.
+
 
 =====================================================================
   SECTION 10 - FILE PLACEMENT SUMMARY (quick reference)
@@ -402,29 +506,30 @@
 
   SOURCE (downloaded/extracted)           DESTINATION
   ----------------------------------------+---------------------------
-  Zeymal server / Zeymal.zip             --> C:\Users\RT\zeymal\
-    Zeymal.exe (installer)                   C:\Users\RT\zeymal\Zeymal.exe
-    (other Zeymal program files)             C:\Users\RT\zeymal\*
+  Zeymal server / Zeymal.zip             --> D:\Zeymal-Setup\
+    Zeymal.exe (installer)                   D:\Zeymal-Setup\Zeymal.exe
+    (you install Zeymal into)            --> D:\Zeymal\
 
-  Zeymal server / (Z_Replace_Base).zip   --> C:\Users\RT\zeymal\(Z_Replace_Base)\
-    (then robocopy'd to)                 --> C:\Program Files (x86)\Zeymal\
+  Zeymal server / (Z_Replace_Base).zip   --> D:\Zeymal-Setup\files\(Z_Replace_Base)\
+    (then robocopy'd once to)            --> D:\Zeymal\
 
-  Zeymal server / jre-8u271-....zip      --> C:\Users\RT\zeymal\files\jre_extract\
-    jre-8u271-windows-i586-iftw.exe      --> C:\Users\RT\zeymal\   (copy)
+  Zeymal server / jre-8u271-....zip      --> D:\Zeymal-Setup\files\jre_extract\
     (also installed system-wide silently)
 
-  Zeymal server / Z_Reset_1034.zip       --> C:\Users\RT\zeymal\files\ashley_restore\
+  Zeymal server / Z_Reset_1034.zip       --> D:\Zeymal-Setup\files\ashley_restore\
     Ashley.bak                           --> restored into SQL Server as [Ashley]
 
-  SQL 2022 bootstrapper                  --> C:\Users\RT\Downloads\SQL2022-SSEI-Expr.exe
-  SQL 2022 media (SQLEXPR_x64_ENU.exe)  --> C:\Users\RT\Downloads\SQLMedia\
-  SQL 2022 extracted setup.exe           --> C:\Users\RT\Downloads\SQLMedia\extract\
+  SQL 2022 bootstrapper                  --> D:\Zeymal-Setup\SQL2022-SSEI-Expr.exe
+  SQL 2022 media (SQLEXPR_x64_ENU.exe)  --> D:\Zeymal-Setup\SQLMedia\
+  SQL 2022 extracted setup.exe           --> D:\Zeymal-Setup\SQLMedia\extract\
   SQL 2022 installed engine              --> C:\Program Files\Microsoft SQL Server\
 
-  SSMS installer (Win10/11)              --> C:\Users\RT\Downloads\SSMS-Setup-ENU.exe
-  SSMS installer (Win7/8)               --> C:\Users\RT\Downloads\SSMS-Setup-17.exe
+  SSMS installer (Win10/11)              --> D:\Zeymal-Setup\SSMS-Setup-ENU.exe
+  SSMS installer (Win7/8)               --> D:\Zeymal-Setup\SSMS-Setup-17.exe
   SSMS installed                         --> C:\Program Files (x86)\Microsoft SQL Server
                                               Management Studio <version>\
+
+  Everything under D:\Zeymal-Setup\ is deleted once installed (SECTION 13).
 
 
 =====================================================================
@@ -434,7 +539,11 @@
   During the script:
   ------------------
   1. When the script pauses and asks, run:
-         C:\Users\RT\zeymal\Zeymal.exe
+         D:\Zeymal-Setup\Zeymal.exe
+     When the wizard asks where to install, choose the app folder,
+     D:\Zeymal, NOT the C:\Program Files folder it may suggest.
+     If Zeymal still lands in C:\Program Files, setup says so:
+     uninstall it, run Zeymal.exe again and choose D:\Zeymal.
      Complete the Zeymal installation wizard.
      Press any key in the setup window when done.
 
@@ -444,6 +553,8 @@
   3. Go to:  File > Zeymal Signature
      Copy the signature text.
   4. Send the signature to your vendor/licenser to get a license file.
+     Give them the sa password chosen at install (SECTION 1): the
+     config they issue must use it.
   5. Once you receive the license file, go to:
          File > Zeymal Configuration > Load Config
      and load the license file.
@@ -461,8 +572,14 @@
   Re-running setup.bat is SAFE.
   The script checks before every action:
     - User already exists?  --> skips user creation
+    - Folders already chosen? --> reuses them without asking
     - SQL already installed? --> skips SQL install
-    - File already downloaded (>= 10 KB)? --> skips download
+    - Already installed (Java, Zeymal, base files, database)?
+                              --> its file is not downloaded again
+    - File already downloaded and verified? --> skips download
+    - Base files already copied? --> not copied again
+    - Ashley database already exists? --> not restored
+    - SQL Server restricted to sa? --> asks for the sa password at step 3
     - Zip already extracted (marker file exists)? --> skips extract
     - SSMS already installed? --> skips SSMS install
 
@@ -473,11 +590,80 @@
     Step 12 (IIS/FTP config) will then complete.
 
   SQL restore fails?
-    Open SSMS, connect to .\SQLEXPRESS with sa / Zeymal@1034
+    Open SSMS, connect to .\SQLEXPRESS with SQL Server Authentication,
+    login sa and the password chosen at install.
     Right-click Databases > Restore Database
     Choose Device > add the .bak file from:
-        C:\Users\RT\zeymal\files\ashley_restore\
+        D:\Zeymal-Setup\files\ashley_restore\
     Go to Options tab > check "Relocate all files to folder"
     Click OK.
+
+
+=====================================================================
+  SECTION 13 - CLEANUP (end of every run)
+=====================================================================
+
+  After step 13, setup deletes each download whose contents are in
+  place, and keeps the ones a step still needs (the next run reuses
+  them instead of downloading again):
+
+    SQL bootstrapper, SQL media, SQL 2014 installer
+                     --> deleted once SQL Server (SQLEXPRESS) is installed
+    SSMS installer   --> deleted once SSMS is installed
+    Java zip + jre_extract
+                     --> deleted once JRE 8u271 is installed
+    Zeymal.zip + Zeymal.exe
+                     --> deleted once Zeymal is installed
+    (Z_Replace_Base).zip + extracted folder
+                     --> deleted once copied into the app folder
+    Z_Reset_1034.zip + ashley_restore
+                     --> deleted once the Ashley database exists
+
+  Their ".part" and ".extracted" files go with them. D:\Zeymal-Setup\
+  is removed once it is empty; otherwise the end of the run lists what
+  was kept and the summary says "some kept in D:\Zeymal-Setup".
+
+  On a server set up by the old script, the same files are also
+  removed from where it put them: C:\Users\RT\zeymal\files\,
+  C:\Users\RT\zeymal\(Z_Replace_Base)\, the installers it put in
+  C:\Users\RT\zeymal and, in C:\Users\RT\Downloads\, only the
+  SQL/SSMS installers listed above (nothing else there).
+  C:\Users\RT\zeymal itself is removed once step 12 has moved the
+  school's files out of it and nothing else is left in it.
+
+
+=====================================================================
+  SECTION 14 - SQL SERVER LOCKDOWN (end of every run)
+=====================================================================
+
+  SQL Server cannot switch Windows authentication off as a whole: it
+  always accepts Windows logins that exist and are enabled. So, after
+  checking that sa signs in with the password chosen at install, setup
+  turns off every Windows user and group login - what used to be done
+  by hand:
+
+      DENY CONNECT SQL TO [<login>]
+      ALTER LOGIN [<login>] DISABLE
+
+  This covers BUILTIN\Administrators (which the install makes sysadmin,
+  so every local administrator, RT included, could otherwise sign in,
+  even from another PC with RT's password) and any <PC>\<user> login.
+  SQL Server's own service accounts (NT SERVICE\..., NT AUTHORITY\...)
+  are left alone. If sa does not sign in, nothing is changed.
+
+  The lockdown runs only when this run knows the sa password: the run
+  that installs SQL Server, or a later run where it was typed at step 3.
+  The app and its updater sign in as sa, so they are not affected.
+
+  To let one Windows login in again (SSMS, as sa):
+      ALTER LOGIN [<login>] ENABLE
+      REVOKE CONNECT SQL FROM [<login>]
+
+  What it does not stop: an administrator of this PC can still get in,
+  e.g. by restarting SQL Server in single-user mode (local
+  administrators are then let in as sysadmin) or by copying the
+  database files. SQL Server Express has no database encryption (TDE).
+  The lockdown keeps people out of SSMS and the like; it does not
+  protect the data from the PC's own administrators.
 
 =====================================================================
