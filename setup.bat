@@ -17,6 +17,12 @@ title Zeymal Environment Setup
 :: Setup's own state (chosen folders, finished steps), so a re-run picks up where the last one left off.
 set "setupRegKey=HKLM\SOFTWARE\RationalTabs\ZeymalSetup"
 
+:: Base64 (UTF-16LE) of a small PowerShell helper used by :RunWithProgress to run a silent
+:: installer/downloader while printing a live elapsed-time line (and, when RP_WATCHDIR is set,
+:: live downloaded bytes/speed), instead of leaving the console looking frozen for several
+:: minutes. Kept as one encoded constant so no quoting inside it can break the batch parser.
+set "RunProgressB64=JABFAHIAcgBvAHIAQQBjAHQAaQBvAG4AUAByAGUAZgBlAHIAZQBuAGMAZQAgAD0AIAAnAFMAdABvAHAAJwAKACQAUAByAG8AZwByAGUAcwBzAFAAcgBlAGYAZQByAGUAbgBjAGUAIAA9ACAAJwBTAGkAbABlAG4AdABsAHkAQwBvAG4AdABpAG4AdQBlACcACgBmAHUAbgBjAHQAaQBvAG4AIABGAG0AdABTAGkAegBlACgAJABiACkAIAB7AAoAIAAgACAAIABpAGYAIAAoACQAYgAgAC0AZwBlACAAMQBHAEIAKQAgAHsAIAAnAHsAMAA6AE4AMgB9ACAARwBCACcAIAAtAGYAIAAoACQAYgAvADEARwBCACkAIAB9AAoAIAAgACAAIABlAGwAcwBlAGkAZgAgACgAJABiACAALQBnAGUAIAAxAE0AQgApACAAewAgACcAewAwADoATgAyAH0AIABNAEIAJwAgAC0AZgAgACgAJABiAC8AMQBNAEIAKQAgAH0ACgAgACAAIAAgAGUAbABzAGUAaQBmACAAKAAkAGIAIAAtAGcAZQAgADEASwBCACkAIAB7ACAAJwB7ADAAOgBOADIAfQAgAEsAQgAnACAALQBmACAAKAAkAGIALwAxAEsAQgApACAAfQAKACAAIAAgACAAZQBsAHMAZQAgAHsAIAAnAHsAMAB9ACAAQgAnACAALQBmACAAWwBpAG4AdABdACQAYgAgAH0ACgB9AAoAdAByAHkAIAB7AAoAIAAgACAAIAAkAGUAeABlACAAPQAgACQAZQBuAHYAOgBSAFAAXwBFAFgARQAKACAAIAAgACAAJABhAHIAZwBMAGkAbgBlACAAPQAgACQAZQBuAHYAOgBSAFAAXwBBAFIARwBTAAoAIAAgACAAIAAkAGwAYQBiAGUAbAAgAD0AIAAkAGUAbgB2ADoAUgBQAF8ATABBAEIARQBMAAoAIAAgACAAIAAkAHcAYQB0AGMAaAAgAD0AIAAkAGUAbgB2ADoAUgBQAF8AVwBBAFQAQwBIAEQASQBSAAoAIAAgACAAIAAkAHMAdABhAHIAdAAgAD0AIABHAGUAdAAtAEQAYQB0AGUACgAgACAAIAAgAGkAZgAgACgAJABhAHIAZwBMAGkAbgBlACkAIAB7AAoAIAAgACAAIAAgACAAIAAgACQAcAAgAD0AIABTAHQAYQByAHQALQBQAHIAbwBjAGUAcwBzACAALQBGAGkAbABlAFAAYQB0AGgAIAAkAGUAeABlACAALQBBAHIAZwB1AG0AZQBuAHQATABpAHMAdAAgACQAYQByAGcATABpAG4AZQAgAC0AUABhAHMAcwBUAGgAcgB1ACAALQBXAGkAbgBkAG8AdwBTAHQAeQBsAGUAIABIAGkAZABkAGUAbgAKACAAIAAgACAAfQAgAGUAbABzAGUAIAB7AAoAIAAgACAAIAAgACAAIAAgACQAcAAgAD0AIABTAHQAYQByAHQALQBQAHIAbwBjAGUAcwBzACAALQBGAGkAbABlAFAAYQB0AGgAIAAkAGUAeABlACAALQBQAGEAcwBzAFQAaAByAHUAIAAtAFcAaQBuAGQAbwB3AFMAdAB5AGwAZQAgAEgAaQBkAGQAZQBuAAoAIAAgACAAIAB9AAoAIAAgACAAIAAkAGQAcgBhAHcAbgAgAD0AIABbAGQAYQB0AGUAdABpAG0AZQBdADoAOgBNAGkAbgBWAGEAbAB1AGUACgAgACAAIAAgAHcAaABpAGwAZQAgACgALQBuAG8AdAAgACQAcAAuAEgAYQBzAEUAeABpAHQAZQBkACkAIAB7AAoAIAAgACAAIAAgACAAIAAgAGkAZgAgACgAKAAoAEcAZQB0AC0ARABhAHQAZQApACAALQAgACQAZAByAGEAdwBuACkALgBUAG8AdABhAGwATQBpAGwAbABpAHMAZQBjAG8AbgBkAHMAIAAtAGcAZQAgADEAMAAwADAAKQAgAHsACgAgACAAIAAgACAAIAAgACAAIAAgACAAIAAkAGQAcgBhAHcAbgAgAD0AIABHAGUAdAAtAEQAYQB0AGUACgAgACAAIAAgACAAIAAgACAAIAAgACAAIAAkAGUAbAAgAD0AIAAoAEcAZQB0AC0ARABhAHQAZQApACAALQAgACQAcwB0AGEAcgB0AAoAIAAgACAAIAAgACAAIAAgACAAIAAgACAAJAB0AHMAIAA9ACAAJwB7ADAAOgBEADIAfQA6AHsAMQA6AEQAMgB9ADoAewAyADoARAAyAH0AJwAgAC0AZgAgAFsAaQBuAHQAXQAkAGUAbAAuAFQAbwB0AGEAbABIAG8AdQByAHMALAAgACQAZQBsAC4ATQBpAG4AdQB0AGUAcwAsACAAJABlAGwALgBTAGUAYwBvAG4AZABzAAoAIAAgACAAIAAgACAAIAAgACAAIAAgACAAaQBmACAAKAAkAHcAYQB0AGMAaAApACAAewAKACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAJABiAHkAdABlAHMAIAA9ACAAMAAKACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAaQBmACAAKABUAGUAcwB0AC0AUABhAHQAaAAgAC0ATABpAHQAZQByAGEAbABQAGEAdABoACAAJAB3AGEAdABjAGgAKQAgAHsACgAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAJABtACAAPQAgAEcAZQB0AC0AQwBoAGkAbABkAEkAdABlAG0AIAAtAEwAaQB0AGUAcgBhAGwAUABhAHQAaAAgACQAdwBhAHQAYwBoACAALQBSAGUAYwB1AHIAcwBlACAALQBGAGkAbABlACAALQBFAHIAcgBvAHIAQQBjAHQAaQBvAG4AIABTAGkAbABlAG4AdABsAHkAQwBvAG4AdABpAG4AdQBlACAAfAAgAE0AZQBhAHMAdQByAGUALQBPAGIAagBlAGMAdAAgAC0AUAByAG8AcABlAHIAdAB5ACAATABlAG4AZwB0AGgAIAAtAFMAdQBtAAoAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgAGkAZgAgACgAJABtAC4AUwB1AG0AKQAgAHsAIAAkAGIAeQB0AGUAcwAgAD0AIAAkAG0ALgBTAHUAbQAgAH0ACgAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgAH0ACgAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACQAcwBwAGQAIAA9ACAAaQBmACAAKAAkAGUAbAAuAFQAbwB0AGEAbABTAGUAYwBvAG4AZABzACAALQBnAHQAIAAwACkAIAB7ACAAJABiAHkAdABlAHMAIAAvACAAJABlAGwALgBUAG8AdABhAGwAUwBlAGMAbwBuAGQAcwAgAH0AIABlAGwAcwBlACAAewAgADAAIAB9AAoAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIABbAEMAbwBuAHMAbwBsAGUAXQA6ADoAVwByAGkAdABlACgAKAAiAGAAcgAgACAAIAAgAFsAewAwAH0AXQAgAHsAMQB9ACAALQAgAGQAbwB3AG4AbABvAGEAZABlAGQAIAB7ADIAfQAsACAAewAzAH0ALwBzACAAIAAgACAAIAAgACIAIAAtAGYAIAAkAHQAcwAsACAAJABsAGEAYgBlAGwALAAgACgARgBtAHQAUwBpAHoAZQAgACQAYgB5AHQAZQBzACkALAAgACgARgBtAHQAUwBpAHoAZQAgACQAcwBwAGQAKQApACkACgAgACAAIAAgACAAIAAgACAAIAAgACAAIAB9ACAAZQBsAHMAZQAgAHsACgAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgAFsAQwBvAG4AcwBvAGwAZQBdADoAOgBXAHIAaQB0AGUAKAAoACIAYAByACAAIAAgACAAWwB7ADAAfQBdACAAewAxAH0AIAAtACAAcwB0AGkAbABsACAAcgB1AG4AbgBpAG4AZwAsACAAcABsAGUAYQBzAGUAIAB3AGEAaQB0AC4ALgAuACAAIAAgACAAIAAgACIAIAAtAGYAIAAkAHQAcwAsACAAJABsAGEAYgBlAGwAKQApAAoAIAAgACAAIAAgACAAIAAgACAAIAAgACAAfQAKACAAIAAgACAAIAAgACAAIAB9AAoAIAAgACAAIAAgACAAIAAgAFMAdABhAHIAdAAtAFMAbABlAGUAcAAgAC0ATQBpAGwAbABpAHMAZQBjAG8AbgBkAHMAIAAyADUAMAAKACAAIAAgACAAfQAKACAAIAAgACAAWwBDAG8AbgBzAG8AbABlAF0AOgA6AFcAcgBpAHQAZQBMAGkAbgBlACgAKQAKACAAIAAgACAAJABlAGwAIAA9ACAAKABHAGUAdAAtAEQAYQB0AGUAKQAgAC0AIAAkAHMAdABhAHIAdAAKACAAIAAgACAAJAB0AHMAIAA9ACAAJwB7ADAAOgBEADIAfQA6AHsAMQA6AEQAMgB9ADoAewAyADoARAAyAH0AJwAgAC0AZgAgAFsAaQBuAHQAXQAkAGUAbAAuAFQAbwB0AGEAbABIAG8AdQByAHMALAAgACQAZQBsAC4ATQBpAG4AdQB0AGUAcwAsACAAJABlAGwALgBTAGUAYwBvAG4AZABzAAoAIAAgACAAIABbAEMAbwBuAHMAbwBsAGUAXQA6ADoAVwByAGkAdABlAEwAaQBuAGUAKAAnACAAIAAgACAARgBpAG4AaQBzAGgAZQBkACAAaQBuACAAJwAgACsAIAAkAHQAcwAgACsAIAAnAC4AJwApAAoAIAAgACAAIABlAHgAaQB0ACAAJABwAC4ARQB4AGkAdABDAG8AZABlAAoAfQAgAGMAYQB0AGMAaAAgAHsACgAgACAAIAAgAFsAQwBvAG4AcwBvAGwAZQBdADoAOgBXAHIAaQB0AGUATABpAG4AZQAoACkACgAgACAAIAAgAFsAQwBvAG4AcwBvAGwAZQBdADoAOgBXAHIAaQB0AGUATABpAG4AZQAoACcAIAAgACAAIABbAEUAUgBSAE8AUgBdACAAJwAgACsAIAAkAF8ALgBFAHgAYwBlAHAAdABpAG8AbgAuAE0AZQBzAHMAYQBnAGUAKQAKACAAIAAgACAAZQB4AGkAdAAgADEACgB9AAoA"
+
 :: ============================================================
 ::  Zeymal Environment Setup
 :: ============================================================
@@ -918,6 +924,29 @@ exit /b %rc%
 
 
 :: ============================================================
+:: :RunWithProgress - runs a silent installer/downloader while
+:: printing a live "[hh:mm:ss] <label> - still running..." line
+:: instead of leaving the console looking frozen for several
+:: minutes (the old behaviour for SQL Server/SSMS/Java installs).
+::
+:: Expects, set by the caller before the call:
+::   RP_EXE       - program to run
+::   RP_ARGS      - its argument string (may be empty)
+::   RP_LABEL     - text shown next to the elapsed time
+::   RP_WATCHDIR  - optional folder to watch; while set, the line
+::                  shows live downloaded bytes and speed instead
+::                  of just "still running" (used for the SQL
+::                  Server media download, which writes into it)
+:: Returns the launched program's own exit code.
+:: ============================================================
+:RunWithProgress
+powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand %RunProgressB64%
+set "rc=!errorlevel!"
+set "RP_EXE=" & set "RP_ARGS=" & set "RP_LABEL=" & set "RP_WATCHDIR="
+exit /b %rc%
+
+
+:: ============================================================
 :: SQL Server 2022 Express + SSMS  (Windows 10/11)
 :: ============================================================
 :InstallSqlModern
@@ -992,10 +1021,13 @@ if exist "%SqlMediaFile%" (
 ) else (
     echo.
     echo   Step 2/3: Downloading full SQL Server media ^(~280 MB^)...
-    echo           Microsoft's downloader will open its own progress window.
     echo           This can take 5-15 minutes on a home connection. Please wait.
     echo           Do NOT close this window.
-    start "SQL Server 2022 Express Media Download" /wait "%SqlBootstrap%" /ACTION=Download /MEDIAPATH="%SqlMediaDir%" /MEDIATYPE=Core /LANGUAGE=en-US /QUIET
+    set "RP_EXE=%SqlBootstrap%"
+    set "RP_ARGS=/ACTION=Download /MEDIAPATH="%SqlMediaDir%" /MEDIATYPE=Core /LANGUAGE=en-US /QUIET"
+    set "RP_LABEL=Downloading SQL Server 2022 Express media"
+    set "RP_WATCHDIR=%SqlMediaDir%"
+    call :RunWithProgress
     set "SqlBootExit=!errorlevel!"
     echo           Bootstrapper exit code: !SqlBootExit!
     if !SqlBootExit! neq 0 (
@@ -1050,18 +1082,13 @@ if !errorlevel! neq 0 (
 )
 
 :: Engine only: no PolyBase, full-text, replication, Azure extension or anything else.
-echo   Running SQL Server setup ^(silent, this can take several minutes^)...
+echo   Running SQL Server setup ^(this can take several minutes^)...
 echo   Do NOT close this window.
-"%SqlSetupDir%\setup.exe" /Q /IACCEPTSQLSERVERLICENSETERMS /ACTION=INSTALL ^
-    /FEATURES=SQLENGINE ^
-    /INSTANCENAME=SQLEXPRESS ^
-    /SQLSVCACCOUNT="NT Service\MSSQL$SQLEXPRESS" ^
-    /SQLSYSADMINACCOUNTS="BUILTIN\ADMINISTRATORS" ^
-    /SECURITYMODE=SQL ^
-    /SAPWD="%sqlSaPassword%" ^
-    /TCPENABLED=1 ^
-    /NPENABLED=1 ^
-    /UPDATEENABLED=False
+set "RP_EXE=%SqlSetupDir%\setup.exe"
+set "RP_ARGS=/Q /IACCEPTSQLSERVERLICENSETERMS /ACTION=INSTALL /FEATURES=SQLENGINE /INSTANCENAME=SQLEXPRESS /SQLSVCACCOUNT="NT Service\MSSQL$SQLEXPRESS" /SQLSYSADMINACCOUNTS="BUILTIN\ADMINISTRATORS" /SECURITYMODE=SQL /SAPWD="%sqlSaPassword%" /TCPENABLED=1 /NPENABLED=1 /UPDATEENABLED=False"
+set "RP_LABEL=Installing SQL Server 2022 Express engine"
+set "RP_WATCHDIR="
+call :RunWithProgress
 set "SqlSetupExit=!errorlevel!"
 echo   SQL Server setup exit code: !SqlSetupExit!
 
@@ -1132,16 +1159,13 @@ if !errorlevel! neq 0 (
     exit /b 1
 )
 
-echo   Running SQL Server setup ^(silent, this can take several minutes^)...
+echo   Running SQL Server setup ^(this can take several minutes^)...
 echo   Do NOT close this window.
-"%SqlLegacyInstaller%" /Q /IACCEPTSQLSERVERLICENSETERMS /ACTION=INSTALL ^
-    /FEATURES=SQLENGINE ^
-    /INSTANCENAME=SQLEXPRESS ^
-    /SQLSVCACCOUNT="NT AUTHORITY\Network Service" ^
-    /SQLSYSADMINACCOUNTS="BUILTIN\ADMINISTRATORS" ^
-    /SECURITYMODE=SQL ^
-    /SAPWD="%sqlSaPassword%" ^
-    /TCPENABLED=1
+set "RP_EXE=%SqlLegacyInstaller%"
+set "RP_ARGS=/Q /IACCEPTSQLSERVERLICENSETERMS /ACTION=INSTALL /FEATURES=SQLENGINE /INSTANCENAME=SQLEXPRESS /SQLSVCACCOUNT="NT AUTHORITY\Network Service" /SQLSYSADMINACCOUNTS="BUILTIN\ADMINISTRATORS" /SECURITYMODE=SQL /SAPWD="%sqlSaPassword%" /TCPENABLED=1"
+set "RP_LABEL=Installing SQL Server 2014 Express engine"
+set "RP_WATCHDIR="
+call :RunWithProgress
 set "SqlLegacyExit=!errorlevel!"
 echo   SQL Server setup exit code: !SqlLegacyExit!
 
@@ -1185,9 +1209,13 @@ if !errorlevel! neq 0 (
     exit /b 0
 )
 
-echo   Installing SSMS ^(silent, this can take several minutes^)...
+echo   Installing SSMS ^(this can take several minutes^)...
 echo   Do NOT close this window.
-"!SsmsInstaller!" /install /quiet /norestart
+set "RP_EXE=!SsmsInstaller!"
+set "RP_ARGS=/install /quiet /norestart"
+set "RP_LABEL=Installing SQL Server Management Studio"
+set "RP_WATCHDIR="
+call :RunWithProgress
 if !errorlevel! neq 0 (
     echo   [WARN ] SSMS installation reported an error. You can install it manually later.
     call :ackWarn
@@ -1476,8 +1504,12 @@ if not exist "%JavaInstaller%" (
     exit /b 1
 )
 
-echo   Installing Java silently (auto-update disabled)...
-"%JavaInstaller%" /s AUTO_UPDATE=Disable STATIC=1 REBOOT=Disable EULA=Disable NOSTARTMENU=Enable WEB_ANALYTICS=Disable
+echo   Installing Java (auto-update disabled)...
+set "RP_EXE=%JavaInstaller%"
+set "RP_ARGS=/s AUTO_UPDATE=Disable STATIC=1 REBOOT=Disable EULA=Disable NOSTARTMENU=Enable WEB_ANALYTICS=Disable"
+set "RP_LABEL=Installing Java JRE 8u271"
+set "RP_WATCHDIR="
+call :RunWithProgress
 set "javaInstallRc=!errorlevel!"
 if !javaInstallRc! neq 0 (
     echo   [WARN ] Java installer exit code !javaInstallRc!.
