@@ -1639,6 +1639,11 @@ if defined doneBase (
 )
 
 echo Checking source folder...
+if not exist "%sourceFolder%" (
+    echo   [WARN] Source folder not found. It should have been extracted in step
+    echo          9/13; extracting it now.
+    call :ExtractZip "%ZeymalFiles%\(Z_Replace_Base).zip" "%ZeymalFiles%" "(Z_Replace_Base).zip"
+)
 if exist "%sourceFolder%" (
     echo   [OK] Source folder exists.
 ) else (
