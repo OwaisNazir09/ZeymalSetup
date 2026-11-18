@@ -111,6 +111,7 @@ set "SQLAUTH=-E"
 call :AskSaPassword
 if !errorlevel! neq 0 ( set "failStep=3/13 choose the sa password" & goto :fatal )
 call :SqlSignIn
+call :AskSsms
 echo.
 
 :: ------------------------------------------------------------
@@ -209,6 +210,18 @@ echo [9.5/13] Copying Zeymal base files to %appFolder%...
 call :CopyBaseFiles
 if !errorlevel! neq 0 (
     echo   [WARN ] Copying the base files had issues.
+    call :ackWarn
+)
+echo.
+
+:: ------------------------------------------------------------
+:: [9.6/13] Install the report fonts for all users
+:: ------------------------------------------------------------
+echo [9.6/13] Installing the report fonts for all users...
+call :InstallFonts
+if !errorlevel! neq 0 (
+    echo   [WARN ] Some fonts were not installed. Receipts that use them stop with
+    echo           "Font ... is not available to the JVM" until they are.
     call :ackWarn
 )
 echo.
@@ -804,7 +817,8 @@ if exist "%ProgramFiles%\Java\jre1.8.0_271\bin\java.exe" set "javaOk=1"
 exit /b 0
 
 
-:: Sets SsmsFound=1 when any SSMS is installed.
+:: Sets SsmsFound=1 when any SSMS is installed (any version: the folder is "Microsoft SQL
+:: Server Management Studio <version>", with Ssms.exe under Release\ from SSMS 21 on).
 :DetectSsms
 set "SsmsFound=0"
 
@@ -814,11 +828,31 @@ if !errorlevel! equ 0 set "SsmsFound=1"
 reg query "HKLM\SOFTWARE\WOW6432Node\Microsoft\Microsoft SQL Server Management Studio" >nul 2>&1
 if !errorlevel! equ 0 set "SsmsFound=1"
 
-for %%D in (17 18 19 20 21) do (
-    if exist "%ProgramFiles(x86)%\Microsoft SQL Server Management Studio %%D\Common7\IDE\Ssms.exe" set "SsmsFound=1"
-    if exist "%ProgramFiles%\Microsoft SQL Server Management Studio %%D\Common7\IDE\Ssms.exe"      set "SsmsFound=1"
-    if exist "%ProgramFiles%\Microsoft SQL Server Management Studio %%D\Release\Common7\IDE\Ssms.exe" set "SsmsFound=1"
+for /d %%D in ("%ProgramFiles(x86)%\Microsoft SQL Server Management Studio *" "%ProgramFiles%\Microsoft SQL Server Management Studio *") do (
+    if exist "%%~D\Common7\IDE\Ssms.exe"         set "SsmsFound=1"
+    if exist "%%~D\Release\Common7\IDE\Ssms.exe" set "SsmsFound=1"
 )
+exit /b 0
+
+
+:: ============================================================
+:: :AskSsms - SSMS is optional: asked at the start, so the long
+:: unattended part is not interrupted. Not asked when an SSMS is
+:: already installed. Sets wantSsms to 1 or 0.
+:: ============================================================
+:AskSsms
+set "wantSsms=0"
+call :DetectSsms
+if "!SsmsFound!"=="1" exit /b 0
+echo.
+echo   SQL Server Management Studio ^(SSMS^) is not installed. It is optional: Zeymal does not
+echo   need it, and SSMS on another PC can connect to this server as sa.
+choice /c YN /m "  Install SSMS here (a download of 500 MB or more)"
+if errorlevel 2 (
+    echo   [SKIP ] SSMS will not be installed.
+    exit /b 0
+)
+set "wantSsms=1"
 exit /b 0
 
 
@@ -1142,22 +1176,26 @@ exit /b 1
 
 
 :: ============================================================
-:: :SqlExeCheck <file> <strict 0/1> - returns 0 when <file> is
-:: signed by Microsoft and is SQL Server 2022 (product version 16).
+:: :SqlExeCheck <file> <strict 0/1> [major] - returns 0 when <file>
+:: is signed by Microsoft and has product version <major>: 16 (the
+:: default) = SQL Server 2022, 20 = SSMS 20.
 :: Not strict: a file without version information is accepted too.
 :: Sets sqlExeMajor and sqlExeVerdict (ok, version or unsigned).
 :: ============================================================
 :SqlExeCheck
 set "SX_PATH=%~1"
 set "SX_STRICT=%~2"
+set "SX_MAJOR=%~3"
+if not defined SX_MAJOR set "SX_MAJOR=16"
 set "sqlExeMajor=?"
 set "sqlExeVerdict=unreadable"
-for /f "tokens=1,2" %%A in ('powershell -NoProfile -Command "$f = $env:SX_PATH; $s = $null; $m = 0; try { $s = Get-AuthenticodeSignature -LiteralPath $f; $m = (Get-Item -LiteralPath $f).VersionInfo.ProductMajorPart } catch {}; if (-not $s -or $s.Status -ne 'Valid' -or $s.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') { $v = 'unsigned' } elseif ($m -eq 16 -or ($m -eq 0 -and $env:SX_STRICT -ne '1')) { $v = 'ok' } else { $v = 'version' }; Write-Output ('{0} {1}' -f $m, $v)"') do (
+for /f "tokens=1,2" %%A in ('powershell -NoProfile -Command "$f = $env:SX_PATH; $s = $null; $m = 0; try { $s = Get-AuthenticodeSignature -LiteralPath $f; $m = (Get-Item -LiteralPath $f).VersionInfo.ProductMajorPart } catch {}; if (-not $s -or $s.Status -ne 'Valid' -or $s.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') { $v = 'unsigned' } elseif ($m -eq [int]$env:SX_MAJOR -or ($m -eq 0 -and $env:SX_STRICT -ne '1')) { $v = 'ok' } else { $v = 'version' }; Write-Output ('{0} {1}' -f $m, $v)"') do (
     set "sqlExeMajor=%%A"
     set "sqlExeVerdict=%%B"
 )
 set "SX_PATH="
 set "SX_STRICT="
+set "SX_MAJOR="
 if "!sqlExeVerdict!"=="ok" exit /b 0
 exit /b 1
 
@@ -1197,7 +1235,13 @@ exit /b 0
 
 
 :: ============================================================
-:: Install SSMS - modern (Win10/11) or legacy 17.9.1 (Win7/8)
+:: Install SSMS - 20.2.1 (Win10/11) or legacy 17.9.1 (Win7/8)
+:: Only when the operator asked for it at step 3 (:AskSsms).
+:: SSMS 20.2.1 is pinned: Microsoft's general SSMS link
+:: (aka.ms/ssmsfullsetup) now gives SSMS 22, a Visual Studio
+:: Installer stub that ignores these switches and brings optional
+:: AI features. 20.2.1 is the smallest classic installer and works
+:: with SQL Server 2022. It must be Microsoft-signed version 20.
 :: ============================================================
 :InstallSSMS
 echo.
@@ -1208,18 +1252,36 @@ if "!SsmsFound!"=="1" (
     echo   [ OK  ] SSMS is already installed. Skipping.
     exit /b 0
 )
+if not "!wantSsms!"=="1" (
+    echo   [SKIP ] Not installed, as chosen at step 3.
+    exit /b 0
+)
 
+set "SsmsMajor="
 echo %windowsName% | findstr /I /C:"Windows 10" /C:"Windows 11" >nul
 if not errorlevel 1 (
-    set "SsmsUrl=https://aka.ms/ssmsfullsetup"
+    set "SsmsUrl=https://go.microsoft.com/fwlink/?linkid=2313753&clcid=0x409"
     set "SsmsInstaller=%DownloadPath%\SSMS-Setup-ENU.exe"
-    echo   Downloading SSMS ^(latest^)...
+    set "SsmsMajor=20"
+    set "SsmsName=SSMS 20.2.1"
 ) else (
     set "SsmsUrl=https://go.microsoft.com/fwlink/?linkid=2043154&clcid=0x409"
     set "SsmsInstaller=%DownloadPath%\SSMS-Setup-17.exe"
-    echo   Downloading SSMS 17.9.1 ^(last version supporting Windows 7/8^)...
+    set "SsmsName=SSMS 17.9.1 (last version supporting Windows 7/8)"
 )
 
+:: An installer an earlier run downloaded is reused if it checks out (it is about 500 MB). One
+:: that does not, such as the SSMS 22 stub the general link used to give, is deleted.
+if defined SsmsMajor if exist "!SsmsInstaller!" (
+    call :SqlExeCheck "!SsmsInstaller!" 1 !SsmsMajor!
+    if !errorlevel! equ 0 (
+        echo   [ OK  ] !SsmsName! installer already downloaded.
+        goto :SSMS_install
+    )
+    del /f /q "!SsmsInstaller!" >nul 2>&1
+)
+
+echo   Downloading !SsmsName!...
 call :Download "!SsmsUrl!" "!SsmsInstaller!" "SSMS"
 if !errorlevel! neq 0 (
     echo   [WARN ] Failed to download SSMS.
@@ -1227,16 +1289,34 @@ if !errorlevel! neq 0 (
     call :ackWarn
     exit /b 0
 )
+if defined SsmsMajor (
+    call :SqlExeCheck "!SsmsInstaller!" 1 !SsmsMajor!
+    if !errorlevel! neq 0 (
+        echo   [WARN ] The download is not the !SsmsName! installer ^(version !sqlExeMajor!, !sqlExeVerdict!^).
+        echo           It was deleted. Install SSMS manually from: !SsmsUrl!
+        del /f /q "!SsmsInstaller!" >nul 2>&1
+        call :ackWarn
+        exit /b 0
+    )
+)
 
-echo   Installing SSMS ^(this can take several minutes^)...
+:SSMS_install
+
+echo   Installing !SsmsName! ^(this can take several minutes^)...
 echo   Do NOT close this window.
 set "RP_EXE=!SsmsInstaller!"
 set "RP_ARGS=/install /quiet /norestart"
 set "RP_LABEL=Installing SQL Server Management Studio"
 set "RP_WATCHDIR="
 call :RunWithProgress
-if !errorlevel! neq 0 (
-    echo   [WARN ] SSMS installation reported an error. You can install it manually later.
+set "ssmsRc=!errorlevel!"
+:: 3010 = installed; Windows needs a restart to finish.
+if "!ssmsRc!"=="3010" (
+    echo   [ OK  ] SSMS installed. Restart Windows before using it.
+    exit /b 0
+)
+if !ssmsRc! neq 0 (
+    echo   [WARN ] SSMS installation reported an error ^(exit !ssmsRc!^). You can install it manually later.
     call :ackWarn
 ) else (
     echo   [ OK  ] SSMS installed successfully.
@@ -1624,6 +1704,32 @@ if errorlevel 2 (
     exit /b 0
 )
 goto :RZI_check
+
+
+:: ============================================================
+:: :InstallFonts - installs the fonts the reports use (the base
+:: files' __\Fonts: Fake Receipt, which 65 receipt layouts need,
+:: and four more) for ALL users: copied into C:\Windows\Fonts,
+:: registered under HKLM and loaded for this session. Installing a
+:: font by double-click only installs it for that one Windows user
+:: (Windows 10 1809 and later), and JasperReports then stops with
+:: "Font 'Fake Receipt' is not available to the JVM" for everyone
+:: else. A font already installed for all users is left alone.
+:: Runs on every run. Returns 1 when a font could not be installed.
+:: ============================================================
+:InstallFonts
+call :CheckDone
+set "FONT_DIR="
+for %%F in ("%appFolder%\__\Fonts" "%oldInstall%\__\Fonts" "%ZeymalFiles%\(Z_Replace_Base)\__\Fonts") do if not defined FONT_DIR if exist "%%~F\*.ttf" set "FONT_DIR=%%~F"
+if not defined FONT_DIR (
+    echo   [WARN ] No __\Fonts folder found in the app folder or the base files.
+    exit /b 1
+)
+echo   From: !FONT_DIR!
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$src = $env:FONT_DIR; $dst = Join-Path $env:WINDIR 'Fonts'; $key = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts'; Add-Type -AssemblyName PresentationCore; Add-Type -Namespace ZeymalSetup -Name FontApi -MemberDefinition '[DllImport(\"gdi32.dll\", CharSet = CharSet.Unicode)] public static extern int AddFontResource(string file); [DllImport(\"user32.dll\")] public static extern int PostMessage(System.IntPtr hwnd, uint msg, System.IntPtr w, System.IntPtr l);'; $registered = @((Get-ItemProperty -LiteralPath $key).PSObject.Properties | Where-Object { $_.Name -notlike 'PS*' } | ForEach-Object { [string]$_.Value }); $bad = 0; $added = 0; foreach ($f in (Get-ChildItem -LiteralPath $src -File | Where-Object { $_.Extension -match '^\.(ttf|otf)$' })) { try { $target = Join-Path $dst $f.Name; if ((Test-Path -LiteralPath $target) -and ($registered -contains $f.Name)) { Write-Host ('  [ OK  ] Already installed for all users: ' + $f.Name); continue }; $g = New-Object System.Windows.Media.GlyphTypeface ([uri]$f.FullName); $en = [Globalization.CultureInfo]'en-US'; $name = $g.Win32FamilyNames[$en]; if (-not $name) { $name = [IO.Path]::GetFileNameWithoutExtension($f.Name) }; $face = $g.Win32FaceNames[$en]; if ($face -and $face -ne 'Regular') { $name = $name + ' ' + $face }; $type = if ($f.Extension -match 'otf') { 'OpenType' } else { 'TrueType' }; if (-not (Test-Path -LiteralPath $target)) { Copy-Item -LiteralPath $f.FullName -Destination $target }; Set-ItemProperty -LiteralPath $key -Name ($name + ' (' + $type + ')') -Value $f.Name; [void][ZeymalSetup.FontApi]::AddFontResource($target); $added++; Write-Host ('  [ OK  ] Installed for all users: ' + $name + ' (' + $f.Name + ')') } catch { $bad++; Write-Host ('  [WARN ] ' + $f.Name + ': ' + $_.Exception.Message) } }; if ($added -gt 0) { [void][ZeymalSetup.FontApi]::PostMessage([IntPtr]0xffff, 0x1D, [IntPtr]::Zero, [IntPtr]::Zero) }; if ($bad -gt 0) { exit 1 } else { exit 0 }"
+set "fontRc=!errorlevel!"
+set "FONT_DIR="
+exit /b %fontRc%
 
 
 :: ============================================================

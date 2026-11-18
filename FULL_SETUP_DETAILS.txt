@@ -248,8 +248,10 @@
       Source: download.microsoft.com (Microsoft official)
 
   SSMS-Setup-ENU.exe   (Windows 10/11)
-      Latest SQL Server Management Studio installer.
-      Source: aka.ms/ssmsfullsetup
+      SQL Server Management Studio 20.2.1 installer (~500 MB).
+      Source: go.microsoft.com/fwlink/?linkid=2313753&clcid=0x409
+      Used only if it is signed by Microsoft and is version 20.
+      Only downloaded when SSMS was chosen at step 3.
 
   SSMS-Setup-17.exe   (Windows 7/8)
       SSMS version 17.9.1 - last version supporting Windows 7/8.
@@ -300,15 +302,25 @@
 
   SQL Server Management Studio (SSMS)
   ------------------------------------
-  Windows 10/11 : Latest version from aka.ms/ssmsfullsetup
+  Optional      : asked at step 3 ("Install SSMS here?"), only when no
+                  SSMS is installed. Zeymal does not need it, and SSMS
+                  on another PC can connect to this server as sa.
+  Windows 10/11 : SSMS 20.2.1 - pinned. Microsoft's general link
+                  (aka.ms/ssmsfullsetup) now gives SSMS 22: a Visual
+                  Studio Installer stub that needs other switches and
+                  brings optional AI (Copilot) features. 20.2.1 is the
+                  smallest classic installer (~500 MB, older ones are
+                  larger) and works with SQL Server 2022; Microsoft no
+                  longer fixes it (support status "Upgrade").
   Windows 7/8   : Version 17.9.1 (last supported on those OS)
   Install mode  : /install /quiet /norestart  (silent, no reboot)
+                  Exit 3010 = installed; restart Windows before use.
   Already-installed detection checks:
     - Registry: HKLM\SOFTWARE\Microsoft\Microsoft SQL Server
                 Management Studio
     - Registry: HKLM\SOFTWARE\WOW6432Node\Microsoft\...
-    - Folders : Program Files\Microsoft SQL Server Management
-                Studio 17 through 21\Common7\IDE\Ssms.exe
+    - Folders : Program Files (and x86)\Microsoft SQL Server Management
+                Studio <any version>\[Release\]Common7\IDE\Ssms.exe
 
 
 =====================================================================
@@ -538,6 +550,9 @@
 
   During the script:
   ------------------
+  0. At the start (step 3-4) setup asks, once each: the sa password
+     (when SQL Server is installed), whether to install SSMS, and the
+     Zeymal folder. After that it runs unattended until step 9.
   1. When the script pauses and asks, run:
          D:\Zeymal-Setup\Zeymal.exe
      When the wizard asks where to install, choose the app folder,
@@ -549,6 +564,9 @@
 
   After the script finishes:
   --------------------------
+  On every CLIENT PC (and on a server set up before step 9.6
+  existed): run Install-Fonts.bat as administrator from the Zeymal
+  folder, so receipts print for every Windows user (SECTION 15).
   2. Open the Zeymal application.
   3. Go to:  File > Zeymal Signature
      Copy the signature text.
@@ -665,5 +683,43 @@
   database files. SQL Server Express has no database encryption (TDE).
   The lockdown keeps people out of SSMS and the like; it does not
   protect the data from the PC's own administrators.
+
+
+=====================================================================
+  SECTION 15 - REPORT FONTS (step 9.6, Install-Fonts.bat)
+=====================================================================
+
+  The base files carry five fonts in __\Fonts. Receipts need one of
+  them: 65 report layouts use "Fake Receipt" (fake receipt.ttf). When
+  a font is missing, JasperReports does not substitute another: the
+  report stops with "Font 'Fake Receipt' is not available to the JVM".
+
+  Installing a font by double-click (or right-click > Install)
+  installs it ONLY for the Windows user who did it (Windows 10 1809
+  and later). Zeymal then works for that user - often Administrator -
+  and fails for everyone else.
+
+  Step 9.6 installs every font in __\Fonts for ALL users, on every
+  run:
+    - copied into C:\Windows\Fonts (an existing file is not replaced)
+    - registered under HKLM\SOFTWARE\Microsoft\Windows NT\
+      CurrentVersion\Fonts as "<font name> (TrueType)"
+    - loaded at once for the current session
+  A font already installed for all users is skipped. The fonts come
+  from the app folder's __\Fonts, or, on a server set up before Zeymal
+  went into the app folder, from C:\Program Files (x86)\Zeymal\__\Fonts.
+
+  Install-Fonts.bat does the same on its own, for client PCs and for
+  servers set up before step 9.6: copy it into the Zeymal folder (it
+  uses __\Fonts next to it) and run it as administrator, or give the
+  fonts folder:  Install-Fonts.bat "D:\Zeymal\__\Fonts"
+  Restart Zeymal afterwards.
+
+  Fonts installed:
+      Fake Receipt              fake receipt.ttf   (receipts)
+      FakeReceipt               FAKERECE.TTF
+      Kingthings Trypewriter 2  Kingthings Trypewriter 2.ttf
+      Kravitz Thermal           Kravitz-Thermal.ttf
+      Palatino                  Palatino.ttf
 
 =====================================================================
