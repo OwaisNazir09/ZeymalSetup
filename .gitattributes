@@ -1,0 +1,4 @@
+# cmd cannot find labels reliably in a batch file with Unix (LF) line endings, so batch files are
+# always checked out with Windows (CRLF) line endings, whatever core.autocrlf says on the PC.
+*.bat text eol=crlf
+*.cmd text eol=crlf

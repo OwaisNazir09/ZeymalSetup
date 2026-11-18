@@ -1,5 +1,24 @@
 @echo off
 :: ============================================================
+:: Line endings. cmd cannot find labels reliably in a batch file
+:: saved with Unix (LF) line endings ("The system cannot find the
+:: batch label specified - RegGet"), and a download from GitHub
+:: arrives that way. Such a copy is saved again with Windows (CRLF)
+:: line endings and started again, before any label is used.
+:: ============================================================
+:: The rewrite and the restart are one line: cmd has read all of it before the file changes, and
+:: never reads this file again (another line would be read at its old byte position). The fixed
+:: copy runs nested (call); this one ends when it returns. Exit 9 = rewritten, 8 = could not be.
+set "ZS_SELF=%~f0"
+powershell -NoProfile -Command "$p = $env:ZS_SELF; try { $t = [IO.File]::ReadAllText($p); if ($t -notmatch '(?<!\r)\n') { exit 0 }; [IO.File]::WriteAllText($p, ($t -replace '\r?\n', ([string][char]13 + [char]10))); exit 9 } catch { exit 8 }" & if errorlevel 9 if not errorlevel 10 ( call "%~f0" %* & exit /b )
+if "%errorlevel%"=="8" (
+    echo   [ERROR] This copy of setup.bat has Unix line endings and could not be fixed where it is.
+    echo           Copy it to a folder you can write to, e.g. the Desktop, and run it again.
+    pause
+    exit /b 1
+)
+set "ZS_SELF="
+:: ============================================================
 :: Persistent-window guard.
 :: When the script is launched by double-click / "Run as
 :: administrator", Windows invokes it with cmd /c, which closes
