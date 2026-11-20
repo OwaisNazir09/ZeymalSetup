@@ -16,6 +16,10 @@ setlocal enabledelayedexpansion
 title Zeymal Environment Setup
 :: Setup's own state (chosen folders, finished steps), so a re-run picks up where the last one left off.
 set "setupRegKey=HKLM\SOFTWARE\RationalTabs\ZeymalSetup"
+:: Start this run's log. Every step, decision and exit code is written to a timestamped file so a
+:: failure can be diagnosed after the window is gone. Passwords are NEVER written to it.
+set "warnCount=0"
+call :InitLog
 
 :: Base64 (UTF-16LE) of a small PowerShell helper used by :RunWithProgress to run a silent
 :: installer/downloader while printing a live elapsed-time line (and, when RP_WATCHDIR is set,
@@ -47,6 +51,7 @@ echo.
 :: [1/13] Check administrator privileges
 :: ------------------------------------------------------------
 echo [1/13] Checking administrator privileges...
+call :Log "[1/13] Checking administrator privileges"
 net session >nul 2>&1
 if errorlevel 1 (
     set "failStep=1/13 admin privileges check"
@@ -61,8 +66,10 @@ echo.
 :: [2/13] Detect and validate Windows version
 :: ------------------------------------------------------------
 echo [2/13] Detecting Windows version...
+call :Log "[2/13] Detecting Windows version"
 for /f "delims=" %%A in ('powershell -NoProfile -Command "(Get-CimInstance Win32_OperatingSystem).Caption"') do set "windowsName=%%A"
 echo   Detected OS: %windowsName%
+call :Log "Detected OS: %windowsName%"
 
 echo %windowsName% | findstr /I /C:"Windows 7" /C:"Windows 8" /C:"Windows 10" /C:"Windows 11" >nul
 if errorlevel 1 (
@@ -78,6 +85,7 @@ echo.
 :: [3/13] Create the "RT" user (used by IIS/FTP and as app account)
 :: ------------------------------------------------------------
 echo [3/13] Configuring "RT" user account...
+call :Log "[3/13] Configuring RT user account (password redacted)"
 :: RT's password includes the year of the first run (masterYY). The year is saved, so a re-run,
 :: even in a later year, expects the same password.
 call :RegGet PasswordYear pwYear
@@ -98,6 +106,7 @@ echo.
 :: [4/13] Choose and create the application folder
 :: ------------------------------------------------------------
 echo [4/13] Preparing application folder...
+call :Log "[4/13] Preparing application folder"
 :: Where the old script put everything; only used to reuse or clear what it left behind.
 set "legacyApp=%SystemDrive%\Users\%newUser%\zeymal"
 set "legacyFiles=%legacyApp%\files"
@@ -112,6 +121,7 @@ echo.
 :: [5/13] Create the Downloads folder
 :: ------------------------------------------------------------
 echo [5/13] Preparing Downloads folder...
+call :Log "[5/13] Preparing Downloads folder"
 set "ZeymalFiles=%DownloadPath%\files"
 call :PrepareFolder "!DownloadPath!"
 if !errorlevel! neq 0 ( set "failStep=5/13 create Downloads folder" & goto :fatal )
@@ -124,6 +134,7 @@ echo.
 :: [6/13] Install SQL Server (edition depends on Windows version)
 :: ------------------------------------------------------------
 echo [6/13] Installing SQL Server and SSMS...
+call :Log "[6/13] Installing SQL Server and SSMS"
 echo %windowsName% | findstr /I /C:"Windows 11" /C:"Windows 10" >nul
 if not errorlevel 1 (
     call :InstallSqlModern
@@ -146,6 +157,7 @@ echo.
 :: [7/13] Download Zeymal application files
 :: ------------------------------------------------------------
 echo [7/13] Downloading Zeymal application files...
+call :Log "[7/13] Downloading Zeymal application files"
 call :DownloadZeymalFiles
 if !errorlevel! neq 0 (
     echo   [WARN ] Zeymal file download had issues.
@@ -161,6 +173,7 @@ echo.
 :: [8/13] Install Java Runtime Environment 8u271
 :: ------------------------------------------------------------
 echo [8/13] Installing Java Runtime Environment 8u271...
+call :Log "[8/13] Installing Java Runtime Environment 8u271"
 call :InstallJava
 if !errorlevel! neq 0 (
     echo   [WARN ] Java installation reported an error or was skipped.
@@ -174,6 +187,7 @@ echo.
 :: [9/13] Deploy files and install Zeymal application
 :: ------------------------------------------------------------
 echo [9/13] Deploying Zeymal application files...
+call :Log "[9/13] Deploying Zeymal application files"
 call :DeployZeymalFiles
 if !errorlevel! neq 0 (
     echo   [WARN ] Deployment finished with warnings.
@@ -187,6 +201,7 @@ call :RunZeymalInstaller
 :: [9.5/13] Copy the Zeymal base files into the app folder
 :: ------------------------------------------------------------
 echo [9.5/13] Copying Zeymal base files to %appFolder%...
+call :Log "[9.5/13] Copying Zeymal base files to %appFolder%"
 call :CopyBaseFiles
 if !errorlevel! neq 0 (
     echo   [WARN ] Copying the base files had issues.
@@ -198,6 +213,7 @@ echo.
 :: [10/13] Configure SQL Server (TCP/IP, port 1433, service LogOn)
 :: ------------------------------------------------------------
 echo [10/13] Configuring SQL Server networking and service...
+call :Log "[10/13] Configuring SQL Server networking and service"
 call :ConfigureSqlServer
 echo.
 
@@ -205,6 +221,7 @@ echo.
 :: [11/13] Enable IIS + FTP Windows features
 :: ------------------------------------------------------------
 echo [11/13] Enabling IIS + FTP features...
+call :Log "[11/13] Enabling IIS + FTP features"
 call :EnableIisFeatures
 echo.
 
@@ -212,6 +229,7 @@ echo.
 :: [12/13] Configure IIS virtual directory and FTP site
 :: ------------------------------------------------------------
 echo [12/13] Configuring IIS "RT" virtual directory and FTP site...
+call :Log "[12/13] Configuring IIS RT virtual directory and FTP site"
 call :ConfigureIisSites
 echo.
 
@@ -219,6 +237,7 @@ echo.
 :: [13/13] Restore Ashley database
 :: ------------------------------------------------------------
 echo [13/13] Restoring Ashley database...
+call :Log "[13/13] Restoring Ashley database"
 call :RestoreAshleyDb
 call :SetAppFtpPassword
 echo.
@@ -227,6 +246,7 @@ echo.
 :: [Cleanup] Delete the downloads whose contents are in place
 :: ------------------------------------------------------------
 echo [Cleanup] Deleting setup downloads that are no longer needed...
+call :Log "[Cleanup] Deleting setup downloads that are no longer needed"
 call :CleanupDownloads
 echo.
 
@@ -234,6 +254,7 @@ echo.
 :: [Lockdown] Restrict SQL Server to the sa login
 :: ------------------------------------------------------------
 echo [Lockdown] Turning off Windows sign-in to SQL Server...
+call :Log "[Lockdown] Turning off Windows sign-in to SQL Server"
 call :RestrictSqlToSa
 echo.
 
@@ -252,6 +273,13 @@ if defined sqlSaPassword (
 echo   SQL sign-in      : !sqlLockState!
 echo   IIS Virtual Dir  : http://localhost/RT
 echo   FTP site         : ftp://localhost/  (site name: RT)
+if defined logFile echo   Run log          : !logFile!
+if !warnCount! gtr 0 (
+    echo   Warnings         : !warnCount!   ^(review them in the run log above^)
+) else (
+    echo   Warnings         : none
+)
+call :Log "Setup reached the completion summary with !warnCount! warning(s)."
 echo ============================================================
 echo   Next manual steps (per install guide):
 echo     * Start Zeymal, copy File ^> Zeymal Signature, share for license
@@ -299,9 +327,65 @@ goto :done_wait
 :: window close silently on any failure.
 :: ============================================================
 :ackWarn
+set /a warnCount+=1
+call :Log "[WARN #!warnCount!] A warning was shown to the operator (see console above)."
 echo.
 echo   ^>^> A warning/error occurred above. Press any key to continue...
 pause >nul
+exit /b 0
+
+
+:: ============================================================
+:: :InitLog - open this run's log file. Prefers a "logs" folder next
+:: to setup.bat (most discoverable); falls back to the TEMP folder
+:: when the script's folder is read-only (network share, locked-down
+:: Downloads). Writes a header with the run's context. Passwords are
+:: NEVER written to the log.
+:: ============================================================
+:InitLog
+set "logFile="
+for /f %%T in ('powershell -NoProfile -Command "(Get-Date).ToString('yyyyMMdd_HHmmss')"') do set "logStamp=%%T"
+if not defined logStamp set "logStamp=%RANDOM%"
+set "logDir=%~dp0logs"
+mkdir "!logDir!" >nul 2>&1
+set "logFile=!logDir!\setup_!logStamp!.log"
+>>"!logFile!" echo. 2>nul
+if not exist "!logFile!" (
+    set "logDir=%TEMP%\ZeymalSetup"
+    mkdir "!logDir!" >nul 2>&1
+    set "logFile=!logDir!\setup_!logStamp!.log"
+    >>"!logFile!" echo. 2>nul
+)
+if not exist "!logFile!" (
+    set "logFile="
+    echo   [WARN ] Could not open a log file; continuing without one.
+    exit /b 0
+)
+set "logHost=%COMPUTERNAME%"
+set "logUser=%USERNAME%"
+set "logSelf=%~f0"
+>>"!logFile!" echo ============================================================
+>>"!logFile!" echo   Zeymal Environment Setup - run log
+>>"!logFile!" echo   Started : !DATE! !TIME!
+>>"!logFile!" echo   Host    : !logHost!   User: !logUser!
+>>"!logFile!" echo   Script  : !logSelf!
+>>"!logFile!" echo ============================================================
+echo   [LOG  ] Writing this run to: !logFile!
+exit /b 0
+
+
+:: ============================================================
+:: :Log <message> - append one timestamped line to the run log.
+:: Pass the message as a single quoted argument. No-op when no log
+:: file could be opened. NEVER pass a password to this routine: the
+:: log is a file on disk that outlives the console window.
+:: ============================================================
+:Log
+if not defined logFile exit /b 0
+:: Assign first, then echo via delayed expansion: any & < > | in the message is then treated as
+:: literal text, not as a shell operator, so a message can carry any characters safely.
+set "logMsg=%~1"
+>>"!logFile!" echo [!TIME!] !logMsg!
 exit /b 0
 
 
@@ -316,11 +400,14 @@ echo   SETUP FAILED
 echo ============================================================
 if defined failStep (
     echo   Failed at step: !failStep!
+    call :Log "SETUP FAILED at step: !failStep!"
 ) else (
     echo   Failed at an unknown step.
+    call :Log "SETUP FAILED at an unknown step."
 )
 echo.
 echo   Scroll up to read the error above.
+if defined logFile echo   Full run log: !logFile!
 echo   THIS WINDOW WILL NOT CLOSE. Close it manually (X button)
 echo   when you are done reading the errors.
 echo ============================================================
@@ -566,6 +653,7 @@ if !errorlevel! equ 0 (
 )
 echo   [ OK  ] SQL Server accepts only sa now; Windows sign-in is off.
 set "sqlLockState=sa only (Windows sign-in off)"
+call :Log "SQL Server locked down: sa only (Windows sign-in off)."
 exit /b 0
 
 
@@ -648,6 +736,8 @@ call :RegSet AppFolder "!appFolder!"
 call :RegSet DownloadFolder "!DownloadPath!"
 echo   App folder       : !appFolder!
 echo   Downloads folder : !DownloadPath!
+call :Log "App folder: !appFolder!"
+call :Log "Downloads folder: !DownloadPath!"
 exit /b 0
 
 
@@ -893,6 +983,7 @@ if exist "%DownloadPath%\" (
     echo   [ OK  ] All setup downloads are deleted.
     set "downloadsState=all deleted"
 )
+call :Log "Cleanup result: !downloadsState!"
 exit /b 0
 
 
@@ -1091,6 +1182,7 @@ set "RP_WATCHDIR="
 call :RunWithProgress
 set "SqlSetupExit=!errorlevel!"
 echo   SQL Server setup exit code: !SqlSetupExit!
+call :Log "SQL Server 2022 setup exit code: !SqlSetupExit!"
 
 if !SqlSetupExit! neq 0 (
     echo   [ERROR] SQL Server installation reported an error.
@@ -1168,6 +1260,7 @@ set "RP_WATCHDIR="
 call :RunWithProgress
 set "SqlLegacyExit=!errorlevel!"
 echo   SQL Server setup exit code: !SqlLegacyExit!
+call :Log "SQL Server 2014 setup exit code: !SqlLegacyExit!"
 
 if !SqlLegacyExit! neq 0 (
     echo   [ERROR] SQL Server installation reported an error. Check the setup logs.
@@ -1398,6 +1491,7 @@ if not exist "!fileDest!" (
 set "dlSize=0"
 for %%A in ("!fileDest!") do set "dlSize=%%~zA"
 echo     [ OK  ] Saved and verified !dlSize! bytes: !fileDest!
+call :Log "Downloaded !fileName! (!dlSize! bytes, verified)."
 exit /b 0
 
 :DZI_check_retry
@@ -1511,6 +1605,7 @@ set "RP_LABEL=Installing Java JRE 8u271"
 set "RP_WATCHDIR="
 call :RunWithProgress
 set "javaInstallRc=!errorlevel!"
+call :Log "Java JRE 8u271 installer exit code: !javaInstallRc!"
 if !javaInstallRc! neq 0 (
     echo   [WARN ] Java installer exit code !javaInstallRc!.
     exit /b 1
@@ -1673,6 +1768,7 @@ echo ============================================================
 echo ROBOCOPY FINISHED
 echo ============================================================
 echo Robocopy Exit Code : %RC%
+call :Log "CopyBaseFiles robocopy exit code: %RC%"
 echo.
 
 :: Robocopy exit codes 8 and above mean some files were not copied.
@@ -1763,6 +1859,7 @@ if not exist "%appcmd%" (
     echo   [SKIP ] appcmd.exe not found. IIS management tools become available only after a reboot.
     echo           A reboot will be scheduled after this run finishes. Re-run setup.bat after login.
     set "needsReboot=1"
+    call :Log "appcmd.exe not present; IIS config deferred, reboot required before re-run."
     exit /b 0
 )
 
@@ -1941,8 +2038,10 @@ if !restoreRc! neq 0 (
 set "RESTORE_SQL="
 if !restoreRc! neq 0 (
     echo   [WARN ] RESTORE reported an error. You can restore manually from SSMS using WITH MOVE.
+    call :Log "Ashley RESTORE reported an error (exit !restoreRc!)."
     call :ackWarn
 ) else (
     echo   [ OK  ] Ashley database restored.
+    call :Log "Ashley database restored."
 )
 exit /b 0
