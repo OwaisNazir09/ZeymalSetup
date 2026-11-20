@@ -35,6 +35,9 @@ setlocal enabledelayedexpansion
 title Zeymal Environment Setup
 :: Setup's own state (chosen folders, finished steps), so a re-run picks up where the last one left off.
 set "setupRegKey=HKLM\SOFTWARE\RationalTabs\ZeymalSetup"
+:: Our own copies of SQL Server 2022 Express, SSMS 20.2.1 and the full Java 8u271 installer, used
+:: when Microsoft's or Oracle's download does not give the right file.
+set "FallbackUrl=https://zml-installer.blr1.digitaloceanspaces.com/fallback/"
 :: Start this run's log. Every step, decision and exit code is written to a timestamped file so a
 :: failure can be diagnosed after the window is gone. Passwords are NEVER written to it.
 set "warnCount=0"
@@ -1013,7 +1016,7 @@ for %%D in ("%DownloadPath%" "%legacyDownloads%") do (
 if defined doneInstaller call :Discard "%DownloadPath%\Zeymal.exe"
 for %%D in ("%ZeymalFiles%" "%legacyFiles%") do (
     if defined doneBase      call :Discard "%%~D\(Z_Replace_Base).zip" "%%~D\(Z_Replace_Base)"
-    if defined doneJava      call :Discard "%%~D\jre-8u271-windows-i586-iftw.zip" "%%~D\jre_extract"
+    if defined doneJava      call :Discard "%%~D\jre-8u271-windows-i586-iftw.zip" "%%~D\jre_extract" "%%~D\jre-8u271-windows-i586.exe"
     if defined doneInstaller call :Discard "%%~D\Zeymal.zip"
     if /i "!dbExists!"=="YES" call :Discard "%%~D\Z_Reset_1034.zip" "%%~D\ashley_restore"
 )
@@ -1132,72 +1135,26 @@ if defined sqlInstId (
     exit /b 1
 )
 
-set "SqlBootstrap=%DownloadPath%\SQL2022-SSEI-Expr.exe"
 set "SqlMediaDir=%DownloadPath%\SQLMedia"
 set "SqlMediaFile=%SqlMediaDir%\SQLEXPR_x64_ENU.exe"
 set "SqlSetupDir=%SqlMediaDir%\extract"
+if not exist "%SqlMediaDir%" mkdir "%SqlMediaDir%"
 
-echo   Step 1/3: Fetching SQL Server 2022 Express bootstrapper...
-call :FetchSql2022Bootstrap "https://download.microsoft.com/download/29654887-7cde-4397-bba3-d7f087970845/SQL2022-SSEI-Expr.exe"
-if !errorlevel! neq 0 call :FetchSql2022Bootstrap "https://go.microsoft.com/fwlink/p/?linkid=2215160"
+:: The install package itself is downloaded, from Microsoft or else from our own copy. (The
+:: bootstrapper used before only fetched this same file from this same Microsoft folder.) It
+:: must be a Microsoft-signed SQL Server 2022 (version 16); one an earlier run left is reused.
+echo   Step 1/2: Downloading SQL Server 2022 Express ^(~280 MB^)...
+call :FetchVerified "%SqlMediaFile%" 16 "Microsoft Corporation" "SQL Server 2022 Express" "https://download.microsoft.com/download/3/8/d/38de7036-2433-4207-8eae-06e247e17b25/SQLEXPR_x64_ENU.exe" "%FallbackUrl%SQLEXPR_x64_ENU_2022.exe"
 if !errorlevel! neq 0 (
-    echo   [ERROR] Could not get the SQL Server 2022 Express bootstrapper from Microsoft.
-    echo           Download SQL Server 2022 Express ^(SQL2022-SSEI-Expr.exe^), save it as
-    echo             %SqlBootstrap%
+    echo   [ERROR] Could not get SQL Server 2022 Express from Microsoft or from our server.
+    echo           Download SQLEXPR_x64_ENU.exe ^(SQL Server 2022 Express^), save it as
+    echo             %SqlMediaFile%
     echo           and run setup.bat again.
     exit /b 1
 )
 
-if not exist "%SqlMediaDir%" mkdir "%SqlMediaDir%"
-
-:: Media an earlier attempt left here is reused only if it is SQL Server 2022.
-if exist "%SqlMediaFile%" (
-    call :SqlExeCheck "%SqlMediaFile%" 0
-    if !errorlevel! neq 0 (
-        echo   [WARN ] The SQL Server media already here is not SQL Server 2022 ^(version !sqlExeMajor!^).
-        call :Discard "%SqlMediaDir%"
-        mkdir "%SqlMediaDir%" >nul 2>&1
-    )
-)
-
-if exist "%SqlMediaFile%" (
-    echo   [ OK  ] Media package already present. Skipping media download.
-) else (
-    echo.
-    echo   Step 2/3: Downloading full SQL Server media ^(~280 MB^)...
-    echo           This can take 5-15 minutes on a home connection. Please wait.
-    echo           Do NOT close this window.
-    set "RP_EXE=%SqlBootstrap%"
-    set "RP_ARGS=/ACTION=Download /MEDIAPATH="%SqlMediaDir%" /MEDIATYPE=Core /LANGUAGE=en-US /QUIET"
-    set "RP_LABEL=Downloading SQL Server 2022 Express media"
-    set "RP_WATCHDIR=%SqlMediaDir%"
-    call :RunWithProgress
-    set "SqlBootExit=!errorlevel!"
-    echo           Bootstrapper exit code: !SqlBootExit!
-    if !SqlBootExit! neq 0 (
-        echo   [ERROR] SQL Server media download failed ^(exit !SqlBootExit!^).
-        echo           You can download the media manually from:
-        echo             https://www.microsoft.com/en-us/download/details.aspx?id=104781
-        echo           and place SQLEXPR_x64_ENU.exe at:
-        echo             %SqlMediaFile%
-        exit /b 1
-    )
-    if not exist "%SqlMediaFile%" (
-        echo   [ERROR] Expected media file was not produced:
-        echo           %SqlMediaFile%
-        exit /b 1
-    )
-    call :SqlExeCheck "%SqlMediaFile%" 0
-    if !errorlevel! neq 0 (
-        echo   [ERROR] The downloaded media is not SQL Server 2022 ^(version !sqlExeMajor!, !sqlExeVerdict!^).
-        call :Discard "%SqlMediaDir%"
-        exit /b 1
-    )
-    echo   [ OK  ] Media package downloaded.
-)
-
 echo.
-echo   Step 3/3: Extracting media and running silent install...
+echo   Step 2/2: Extracting media and running silent install...
 :: Extract into an empty folder: files of another version left there would mix with these.
 if exist "%SqlSetupDir%\" rd /s /q "%SqlSetupDir%" >nul 2>&1
 mkdir "%SqlSetupDir%" >nul 2>&1
@@ -1247,30 +1204,89 @@ echo   [ OK  ] SQL Server 2022 Express installed successfully.
 exit /b 0
 
 
-:: Gets the SQL Server 2022 Express bootstrapper from <url>, unless a good one is already here.
-:: What is not a Microsoft-signed SQL Server 2022 file is deleted (the link may move to 2025).
-:FetchSql2022Bootstrap
-if exist "%SqlBootstrap%" (
-    call :SqlExeCheck "%SqlBootstrap%" 1
+:: ============================================================
+:: :FetchVerified <dest> <major> <signer> <label> <url> [<url> ...]
+:: Gets <dest> from the first <url> that gives a file signed by
+:: <signer> with product version <major>: Microsoft's or Oracle's
+:: own link first, then our copy in the fallback folder of the
+:: Zeymal download server. A good file already at <dest> (from an
+:: earlier run) is reused; a wrong or broken one is deleted.
+:: Each link gets 3 download attempts. A link that still fails, or
+:: that gives the wrong file (retrying would give it again), is
+:: logged as possibly broken and counted as a warning, so the
+:: technician can have it updated; then the next link is tried.
+:: Returns 1 when no url gives a good file.
+:: ============================================================
+:FetchVerified
+set "FV_DEST=%~1"
+set "FV_MAJOR=%~2"
+set "FV_SIGNER=%~3"
+set "FV_LABEL=%~4"
+set "FV_SOURCE=0"
+if exist "!FV_DEST!" (
+    call :SqlExeCheck "!FV_DEST!" 1 !FV_MAJOR! "!FV_SIGNER!"
     if !errorlevel! equ 0 (
-        echo   [ OK  ] SQL Server 2022 Express bootstrapper already downloaded.
+        echo   [ OK  ] !FV_LABEL! is already downloaded and checked.
         exit /b 0
     )
-    del /f /q "%SqlBootstrap%" >nul 2>&1
+    echo   [WARN ] The !FV_LABEL! file already here is not the right one ^(version !sqlExeMajor!, !sqlExeVerdict!^).
+    del /f /q "!FV_DEST!" >nul 2>&1
 )
-call :Download "%~1" "%SqlBootstrap%" "SQL Server 2022 Express bootstrapper"
-if !errorlevel! neq 0 exit /b 1
-call :SqlExeCheck "%SqlBootstrap%" 1
-if !errorlevel! equ 0 exit /b 0
-echo   [WARN ] That link did not give the SQL Server 2022 installer ^(version !sqlExeMajor!, !sqlExeVerdict!^).
-del /f /q "%SqlBootstrap%" >nul 2>&1
-exit /b 1
+shift
+shift
+shift
+shift
+:FV_next
+if "%~1"=="" (
+    echo   [ERROR] No source gave a good !FV_LABEL! file.
+    call :Log "!FV_LABEL!: no source gave a good file"
+    exit /b 1
+)
+set /a FV_SOURCE+=1
+set "FV_URL=%~1"
+set "FV_TRY=0"
+:FV_try
+set /a FV_TRY+=1
+call :Download "!FV_URL!" "!FV_DEST!" "!FV_LABEL!"
+if !errorlevel! neq 0 (
+    call :Log "!FV_LABEL!: download attempt !FV_TRY! of 3 failed: !FV_URL!"
+    if !FV_TRY! LSS 3 (
+        echo   [WARN ] Download attempt !FV_TRY! of 3 failed. Trying again in 5 seconds...
+        timeout /t 5 /nobreak >nul 2>&1
+        goto :FV_try
+    )
+    call :FV_Broken "failed 3 download attempts"
+    shift
+    goto :FV_next
+)
+call :SqlExeCheck "!FV_DEST!" 1 !FV_MAJOR! "!FV_SIGNER!"
+if !errorlevel! equ 0 (
+    call :Log "!FV_LABEL!: downloaded and checked from !FV_URL!"
+    exit /b 0
+)
+del /f /q "!FV_DEST!" >nul 2>&1
+call :FV_Broken "gave the wrong file (version !sqlExeMajor!, !sqlExeVerdict!)"
+shift
+goto :FV_next
+
+
+:: <what went wrong> - tells the operator, and logs and counts as a warning (the summary shows
+:: the count), that the link :FetchVerified is on may be broken.
+:FV_Broken
+set /a warnCount+=1
+if !FV_SOURCE! equ 1 (set "FV_WHICH=main link") else (set "FV_WHICH=fallback link")
+echo   [WARN ] The !FV_WHICH! for !FV_LABEL! %~1:
+echo           !FV_URL!
+echo           It may be broken; it is noted in the run log.
+call :Log "[WARN #!warnCount!] POSSIBLY BROKEN LINK - the !FV_WHICH! for !FV_LABEL! %~1: !FV_URL!"
+exit /b 0
 
 
 :: ============================================================
-:: :SqlExeCheck <file> <strict 0/1> [major] - returns 0 when <file>
-:: is signed by Microsoft and has product version <major>: 16 (the
-:: default) = SQL Server 2022, 20 = SSMS 20.
+:: :SqlExeCheck <file> <strict 0/1> [major] [signer] - returns 0
+:: when <file> is signed by <signer> (default Microsoft Corporation)
+:: and has product version <major>: 16 (the default) = SQL Server
+:: 2022, 20 = SSMS 20, 8 = Java 8 (signer Oracle America, Inc.).
 :: Not strict: a file without version information is accepted too.
 :: Sets sqlExeMajor and sqlExeVerdict (ok, version or unsigned).
 :: ============================================================
@@ -1278,16 +1294,19 @@ exit /b 1
 set "SX_PATH=%~1"
 set "SX_STRICT=%~2"
 set "SX_MAJOR=%~3"
+set "SX_SIGNER=%~4"
 if not defined SX_MAJOR set "SX_MAJOR=16"
+if not defined SX_SIGNER set "SX_SIGNER=Microsoft Corporation"
 set "sqlExeMajor=?"
 set "sqlExeVerdict=unreadable"
-for /f "tokens=1,2" %%A in ('powershell -NoProfile -Command "$f = $env:SX_PATH; $s = $null; $m = 0; try { $s = Get-AuthenticodeSignature -LiteralPath $f; $m = (Get-Item -LiteralPath $f).VersionInfo.ProductMajorPart } catch {}; if (-not $s -or $s.Status -ne 'Valid' -or $s.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') { $v = 'unsigned' } elseif ($m -eq [int]$env:SX_MAJOR -or ($m -eq 0 -and $env:SX_STRICT -ne '1')) { $v = 'ok' } else { $v = 'version' }; Write-Output ('{0} {1}' -f $m, $v)"') do (
+for /f "tokens=1,2" %%A in ('powershell -NoProfile -Command "$f = $env:SX_PATH; $s = $null; $m = 0; try { $s = Get-AuthenticodeSignature -LiteralPath $f; $m = (Get-Item -LiteralPath $f).VersionInfo.ProductMajorPart } catch {}; if (-not $s -or $s.Status -ne 'Valid' -or $s.SignerCertificate.Subject -notmatch ('O=[\x22]?' + [regex]::Escape($env:SX_SIGNER))) { $v = 'unsigned' } elseif ($m -eq [int]$env:SX_MAJOR -or ($m -eq 0 -and $env:SX_STRICT -ne '1')) { $v = 'ok' } else { $v = 'version' }; Write-Output ('{0} {1}' -f $m, $v)"') do (
     set "sqlExeMajor=%%A"
     set "sqlExeVerdict=%%B"
 )
 set "SX_PATH="
 set "SX_STRICT="
 set "SX_MAJOR="
+set "SX_SIGNER="
 if "!sqlExeVerdict!"=="ok" exit /b 0
 exit /b 1
 
@@ -1363,15 +1382,18 @@ if not errorlevel 1 (
     set "SsmsName=SSMS 17.9.1 (last version supporting Windows 7/8)"
 )
 
-:: An installer an earlier run downloaded is reused if it checks out (it is about 500 MB). One
-:: that does not, such as the SSMS 22 stub the general link used to give, is deleted.
-if defined SsmsMajor if exist "!SsmsInstaller!" (
-    call :SqlExeCheck "!SsmsInstaller!" 1 !SsmsMajor!
-    if !errorlevel! equ 0 (
-        echo   [ OK  ] !SsmsName! installer already downloaded.
-        goto :SSMS_install
+:: SSMS 20.2.1: from Microsoft, else from our copy; Microsoft-signed version 20 either way. An
+:: installer an earlier run left is reused if it checks out (it is about 500 MB); one that does
+:: not, such as the SSMS 22 stub the general link used to give, is deleted.
+if defined SsmsMajor (
+    echo   Downloading !SsmsName!...
+    call :FetchVerified "!SsmsInstaller!" !SsmsMajor! "Microsoft Corporation" "!SsmsName!" "!SsmsUrl!" "%FallbackUrl%SSMS-Setup-ENU_20.2.1.exe"
+    if !errorlevel! neq 0 (
+        echo   [WARN ] Could not get !SsmsName!. Install SSMS manually from: !SsmsUrl!
+        call :ackWarn
+        exit /b 0
     )
-    del /f /q "!SsmsInstaller!" >nul 2>&1
+    goto :SSMS_install
 )
 
 echo   Downloading !SsmsName!...
@@ -1381,16 +1403,6 @@ if !errorlevel! neq 0 (
     echo           Install it manually from: !SsmsUrl!
     call :ackWarn
     exit /b 0
-)
-if defined SsmsMajor (
-    call :SqlExeCheck "!SsmsInstaller!" 1 !SsmsMajor!
-    if !errorlevel! neq 0 (
-        echo   [WARN ] The download is not the !SsmsName! installer ^(version !sqlExeMajor!, !sqlExeVerdict!^).
-        echo           It was deleted. Install SSMS manually from: !SsmsUrl!
-        del /f /q "!SsmsInstaller!" >nul 2>&1
-        call :ackWarn
-        exit /b 0
-    )
 )
 
 :SSMS_install
@@ -1594,6 +1606,7 @@ call :Log "Downloaded !fileName! (!dlSize! bytes, verified)."
 exit /b 0
 
 :DZI_check_retry
+call :Log "!fileName!: download attempt !attempt! of %maxAttempts% failed: !fileUrl!"
 if !attempt! LSS %maxAttempts% (
     echo     Retrying in 3 seconds...
     timeout /t 3 /nobreak >nul 2>&1
@@ -1601,6 +1614,7 @@ if !attempt! LSS %maxAttempts% (
 )
 echo     [ERROR] Download failed after %maxAttempts% attempts.
 echo             URL: !fileUrl!
+call :Log "POSSIBLY BROKEN LINK - !fileName! failed %maxAttempts% download attempts: !fileUrl!"
 exit /b 1
 
 
@@ -1666,7 +1680,11 @@ exit /b 0
 
 
 :: ============================================================
-:: Java JRE 8u271 (from extracted zip file)
+:: Java JRE 8u271
+:: First the small online installer from the Zeymal files, which
+:: downloads Java from Oracle while it runs. If that fails, or Java
+:: is still not installed afterwards, the full offline installer is
+:: taken from our fallback folder (Oracle-signed Java 8 only).
 :: Returns 0 on successful install, 1 if anything went wrong.
 :: The caller is responsible for warning + continuing on 1.
 :: ============================================================
@@ -1676,6 +1694,7 @@ echo   --- Java JRE 8u271 ---
 set "JavaZip=%ZeymalFiles%\jre-8u271-windows-i586-iftw.zip"
 set "JavaExtractDir=%ZeymalFiles%\jre_extract"
 set "JavaInstaller=%JavaExtractDir%\jre-8u271-windows-i586-iftw.exe"
+set "JavaFullInstaller=%ZeymalFiles%\jre-8u271-windows-i586.exe"
 
 call :JavaInstalled
 if defined javaOk (
@@ -1683,33 +1702,45 @@ if defined javaOk (
     exit /b 0
 )
 
-if not exist "%JavaInstaller%" (
+if not exist "%JavaInstaller%" if exist "%JavaZip%" (
     call :ExtractZip "%JavaZip%" "%JavaExtractDir%" "Java JRE 8u271 installer"
-    if !errorlevel! neq 0 (
-        echo   [WARN ] Failed to extract Java installer zip.
-        exit /b 1
+)
+if exist "%JavaInstaller%" (
+    echo   Installing Java ^(auto-update disabled^)...
+    call :RunJavaInstaller "%JavaInstaller%" "Installing Java JRE 8u271"
+    call :JavaInstalled
+    if defined javaOk (
+        echo   [ OK  ] Java JRE 8u271 installed successfully.
+        exit /b 0
     )
+    echo   [WARN ] The online Java installer did not install Java ^(exit !javaInstallRc!^).
+) else (
+    echo   [WARN ] The online Java installer is missing.
 )
 
-if not exist "%JavaInstaller%" (
-    echo   [WARN ] Java installer executable not found at:
-    echo           %JavaInstaller%
+echo   Using the full Java installer from our server instead...
+call :FetchVerified "%JavaFullInstaller%" 8 "Oracle America, Inc." "Java JRE 8u271 full installer" "%FallbackUrl%jre-8u271-windows-i586.exe"
+if !errorlevel! neq 0 exit /b 1
+call :RunJavaInstaller "%JavaFullInstaller%" "Installing Java JRE 8u271, full installer"
+call :JavaInstalled
+if not defined javaOk (
+    echo   [WARN ] Java is still not installed ^(exit !javaInstallRc!^).
     exit /b 1
 )
+echo   [ OK  ] Java JRE 8u271 installed successfully, from the full installer.
+exit /b 0
 
-echo   Installing Java (auto-update disabled)...
-set "RP_EXE=%JavaInstaller%"
+
+:: Runs a Java installer silently (the online and the full one take the same switches) and sets
+:: javaInstallRc to its exit code.
+:RunJavaInstaller
+set "RP_EXE=%~1"
 set "RP_ARGS=/s AUTO_UPDATE=Disable STATIC=1 REBOOT=Disable EULA=Disable NOSTARTMENU=Enable WEB_ANALYTICS=Disable"
-set "RP_LABEL=Installing Java JRE 8u271"
+set "RP_LABEL=%~2"
 set "RP_WATCHDIR="
 call :RunWithProgress
 set "javaInstallRc=!errorlevel!"
-call :Log "Java JRE 8u271 installer exit code: !javaInstallRc!"
-if !javaInstallRc! neq 0 (
-    echo   [WARN ] Java installer exit code !javaInstallRc!.
-    exit /b 1
-)
-echo   [ OK  ] Java JRE 8u271 installed successfully.
+call :Log "%~2: exit code !javaInstallRc!"
 exit /b 0
 
 

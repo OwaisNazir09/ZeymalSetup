@@ -188,6 +188,14 @@
   Not needed    : once JRE 8u271 is installed. Java is not
                   reinstalled on re-runs. (The base files also
                   carry this installer, in D:\Zeymal\__\.)
+  Fallback      : this is Oracle's online installer: it downloads
+                  Java from Oracle while it runs. If it fails, or
+                  Java is still not installed afterwards, setup
+                  uses the full offline installer from our server
+                  (fallback/jre-8u271-windows-i586.exe, ~73 MB),
+                  saved as D:\Zeymal-Setup\files\jre-8u271-windows-
+                  i586.exe. It must be signed by Oracle America and
+                  be Java 8; same install flags.
 
   ---------------------------------------------------------------
   FILE 3: Zeymal.zip
@@ -221,21 +229,42 @@
   transfer finished with the size the server announced. A download
   that receives no data for 5 minutes is abandoned.
 
-  SQL2022-SSEI-Expr.exe
-      SQL Server 2022 Express bootstrapper (small, ~5 MB).
-      Used only to download the full media package.
-      Source: download.microsoft.com (SQL2022-SSEI-Expr.exe), else
-              go.microsoft.com/fwlink/p/?linkid=2215160.
+  FALLBACK COPIES. SQL Server 2022 Express, SSMS 20.2.1 and the full
+  Java installer are also kept on our own download server:
+      https://zml-installer.blr1.digitaloceanspaces.com/fallback/
+          SQLEXPR_x64_ENU_2022.exe     (279 MB)
+          SSMS-Setup-ENU_20.2.1.exe    (496 MB)
+          jre-8u271-windows-i586.exe   (73 MB)
+  Setup tries Microsoft's (Oracle's) own link first and uses our
+  copy when that download fails or gives another file. Either way
+  the file must carry the maker's valid signature (Microsoft
+  Corporation / Oracle America) and the expected version, so a
+  copy is held to the same check as the original. A good file left
+  by an earlier run is reused; a wrong one is deleted.
+  Each link gets 3 download attempts. A link that still fails, or
+  that gives the wrong file (no retry: it would give it again), is
+  shown on screen, written to the run log as
+      [WARN #n] POSSIBLY BROKEN LINK - the main link for ...
+  and counted in the summary's Warnings, so the technician can have
+  the link updated. Every failed attempt is logged with its address.
+  The Zeymal files from our server (step 7) also log each failed
+  attempt, and a link that fails all 3 as POSSIBLY BROKEN LINK.
+  Keep these as plain .exe (not zipped): zipping saves nothing on
+  installers, and the signature check needs the .exe itself.
+
+  D:\Zeymal-Setup\SQLMedia\SQLEXPR_x64_ENU.exe
+      Full SQL Server 2022 Express media package (~280 MB), version
+      16.0.1000.6. Downloaded directly - no bootstrapper (the
+      bootstrapper only fetched this same file from this same
+      Microsoft folder):
+        download.microsoft.com/download/3/8/d/38de7036-2433-4207-
+        8eae-06e247e17b25/SQLEXPR_x64_ENU.exe, else our fallback copy.
       Used only if it is signed by Microsoft and is version 16
       (SQL Server 2022). Microsoft's general "SQL Server 2022 Express"
       link (linkid=2216019) now gives SQL Server 2025, which setup
-      must not install, so it is no longer used.
-
-  D:\Zeymal-Setup\SQLMedia\SQLEXPR_x64_ENU.exe
-      Full SQL Server 2022 Express media package (~280 MB).
+      must not install, so it is not used.
       Media of another version left by an earlier attempt is deleted
       and downloaded again; setup.exe is checked the same way.
-      Downloaded by the bootstrapper above.
       Extracted to: D:\Zeymal-Setup\SQLMedia\extract\
       If it does not extract (e.g. an interrupted download), it is
       deleted so the next run downloads it again.
@@ -249,7 +278,8 @@
 
   SSMS-Setup-ENU.exe   (Windows 10/11)
       SQL Server Management Studio 20.2.1 installer (~500 MB).
-      Source: go.microsoft.com/fwlink/?linkid=2313753&clcid=0x409
+      Source: go.microsoft.com/fwlink/?linkid=2313753&clcid=0x409,
+              else our fallback copy.
       Used only if it is signed by Microsoft and is version 20.
       Only downloaded when SSMS was chosen at step 3.
 
@@ -531,7 +561,6 @@
   Zeymal server / Z_Reset_1034.zip       --> D:\Zeymal-Setup\files\ashley_restore\
     Ashley.bak                           --> restored into SQL Server as [Ashley]
 
-  SQL 2022 bootstrapper                  --> D:\Zeymal-Setup\SQL2022-SSEI-Expr.exe
   SQL 2022 media (SQLEXPR_x64_ENU.exe)  --> D:\Zeymal-Setup\SQLMedia\
   SQL 2022 extracted setup.exe           --> D:\Zeymal-Setup\SQLMedia\extract\
   SQL 2022 installed engine              --> C:\Program Files\Microsoft SQL Server\
@@ -625,10 +654,10 @@
   place, and keeps the ones a step still needs (the next run reuses
   them instead of downloading again):
 
-    SQL bootstrapper, SQL media, SQL 2014 installer
+    SQL media (and a bootstrapper left by an older setup), SQL 2014 installer
                      --> deleted once SQL Server (SQLEXPRESS) is installed
     SSMS installer   --> deleted once SSMS is installed
-    Java zip + jre_extract
+    Java zip + jre_extract + the full Java installer
                      --> deleted once JRE 8u271 is installed
     Zeymal.zip + Zeymal.exe
                      --> deleted once Zeymal is installed
